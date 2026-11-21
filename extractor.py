@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from google import genai
@@ -55,16 +56,25 @@ ALLOWED CATEGORIES: {config['categories']}
 """
 
     client = get_genai_client()
-    response = client.models.generate_content(
-        model='gemini-3.5-flash-lite',
-        contents=f"Analyze the following contract/email text:\n\n{raw_text}",
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            response_mime_type="application/json",
-            response_schema=ContractExtractionResult,
-            temperature=0.1
-        ),
-    )
-    
-    # Pydantic structured output returned directly in response.parsed
-    return response.parsed
+    last_err = None
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model='gemini-3.5-flash-lite',
+                contents=f"Analyze the following contract/email text:\n\n{raw_text}",
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    response_mime_type="application/json",
+                    response_schema=ContractExtractionResult,
+                    temperature=0.1
+                ),
+            )
+            # Pydantic structured output returned directly in response.parsed
+            return response.parsed
+        except Exception as e:
+            last_err = e
+            err_msg = str(e)
+            if attempt < 2 and any(code in err_msg for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise last_err
