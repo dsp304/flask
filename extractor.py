@@ -1,0 +1,70 @@
+import os
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from google import genai
+from google.genai import types
+from verticals import VERTICAL_CONFIGS
+
+# Lazy initialization of Gemini client to prevent app boot crashes when API key is pending
+_client: Optional[genai.Client] = None
+
+def get_genai_client() -> genai.Client:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY environment variable is not set. "
+                "Please configure a valid Google AI Studio API key in Railway."
+            )
+        _client = genai.Client(api_key=api_key)
+    return _client
+
+class ContractExtractionResult(BaseModel):
+    is_valid_contract_or_renewal: bool = Field(
+        description="True if actual vendor contract, lease, renewal notice, or COI. False if marketing spam or receipt."
+    )
+    vendor_name: str = Field(description="Normalized legal or common brand name of vendor.")
+    contract_title: str = Field(description="Short descriptive title of agreement.")
+    category: str = Field(description="Must match one of the allowed categories for the vertical.")
+    expiration_or_renewal_date: Optional[str] = Field(None, description="ISO-8601 date (YYYY-MM-DD).")
+    notice_period_days: Optional[int] = Field(None, description="Days prior to expiration required for notice.")
+    calculated_cancellation_deadline: Optional[str] = Field(None, description="ISO-8601 date (YYYY-MM-DD).")
+    auto_renewal_term_months: Optional[int] = Field(None, description="Auto-renewal extension in months.")
+    annual_spend_estimate: Optional[float] = Field(None, description="Annualized dollar value numeric.")
+    currency: str = Field("USD", description="3-letter ISO currency code.")
+    price_escalation_summary: Optional[str] = Field(None, description="Summary of price increase or CPI escalator.")
+    coi_or_compliance_expiry: Optional[str] = Field(None, description="ISO-8601 date if COI or insurance expires.")
+    key_risk_flags: List[str] = Field(default_factory=list, description="Critical risk bullet points.")
+    source_evidence_quote: str = Field(description="Verbatim sentence proving dates or terms.")
+    confidence_score: float = Field(description="Float between 0.0 and 1.0.")
+
+def extract_contract_from_text(raw_text: str, vertical_id: str = "general_b2b") -> ContractExtractionResult:
+    config = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
+    
+    system_prompt = f"""
+You are an expert B2B contract analyst and procurement risk auditor. Inspect raw email bodies or agreement text and extract structured renewal, cancellation, pricing, and compliance metadata.
+
+STRICT RULES:
+1. NEVER GUESS DATES: If unstated, set date fields to null and lower confidence_score below 0.65.
+2. CALCULATE DEADLINES: Subtract notice_period_days from expiration_or_renewal_date accurately.
+3. CONFIDENCE SCORING: Score >= 0.85 only when vendor and dates are explicit.
+
+{config['llm_domain_hints']}
+ALLOWED CATEGORIES: {config['categories']}
+"""
+
+    client = get_genai_client()
+    response = client.models.generate_content(
+        model='gemini-3.5-flash-lite',
+        contents=f"Analyze the following contract/email text:\n\n{raw_text}",
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=ContractExtractionResult,
+            temperature=0.1
+        ),
+    )
+    
+    # Pydantic structured output returned directly in response.parsed
+    return response.parsed
