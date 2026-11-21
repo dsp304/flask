@@ -104,10 +104,15 @@ def dashboard():
     combined_contracts = []
     for c in (review_contracts + active_contracts):
         c_copy = dict(c)
-        # Convert date objects to ISO strings for JSON serialization
+        # Convert date objects to ISO strings and Decimals to floats/strings for JSON serialization
         for k in ("expiration_or_renewal_date", "calculated_cancellation_deadline", "coi_or_compliance_expiry", "created_at", "updated_at"):
             if c_copy.get(k) is not None:
                 c_copy[k] = str(c_copy[k])
+        if c_copy.get("annual_spend_estimate") is not None:
+            try:
+                c_copy["annual_spend_estimate"] = float(c_copy["annual_spend_estimate"])
+            except Exception:
+                c_copy["annual_spend_estimate"] = str(c_copy["annual_spend_estimate"])
         combined_contracts.append(c_copy)
 
     return render_template(
@@ -118,7 +123,7 @@ def dashboard():
         vertical_info=vertical_info,
         active_contracts=active_contracts,
         review_contracts=review_contracts,
-        all_contracts_json=json.dumps(combined_contracts),
+        all_contracts_json=json.dumps(combined_contracts, default=str),
         total_spend=total_spend,
         critical_deadlines=critical_deadlines,
     )
