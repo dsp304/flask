@@ -69,12 +69,16 @@ def dashboard():
     """
     all_workspaces = list_workspaces()
     
-    # Resolve requested workspace_id
+    # Resolve requested workspace_id (prefer DEFAULT_WORKSPACE_ID or ws_default if not explicitly given)
     requested_ws_id = request.args.get("workspace_id")
-    if not requested_ws_id and all_workspaces:
-        requested_ws_id = all_workspaces[0]["id"]
-    elif not requested_ws_id:
-        requested_ws_id = os.environ.get("DEFAULT_WORKSPACE_ID", "ws_default")
+    if not requested_ws_id:
+        default_candidate = os.environ.get("DEFAULT_WORKSPACE_ID", "ws_default")
+        if any(ws["id"] == default_candidate for ws in all_workspaces):
+            requested_ws_id = default_candidate
+        elif all_workspaces:
+            requested_ws_id = all_workspaces[0]["id"]
+        else:
+            requested_ws_id = default_candidate
 
     # Fetch workspace metadata
     current_workspace = get_workspace(requested_ws_id)
