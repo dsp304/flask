@@ -2,8 +2,8 @@ import os
 import json
 import logging
 import urllib.parse
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import datetime, date, timedelta
+from typing import Optional, Dict, Any, List, Tuple
 
 from sqlalchemy import create_engine, text, Table, MetaData
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -132,8 +132,10 @@ def init_db():
         id VARCHAR(64) PRIMARY KEY,
         name VARCHAR(255) NOT NULL DEFAULT 'Default Workspace',
         vertical_id VARCHAR(64) NOT NULL DEFAULT 'general_b2b',
+        inbound_email_slug VARCHAR(64) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_workspaces_vertical (vertical_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
 
@@ -190,7 +192,7 @@ def init_db():
     # Seed default workspace if absent
     seed_default_workspace_sql = """
     INSERT IGNORE INTO workspaces (id, name, vertical_id)
-    VALUES ('ws_default', 'Default Workspace', 'general_b2b');
+    VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');
     """
 
     try:
@@ -202,12 +204,56 @@ def init_db():
         logger.info("Database initialized successfully with utf8mb4 support.")
     except Exception as e:
         logger.error(f"Error during database initialization: {e}")
-        # Allow caller to handle or retry
 
 
 # ---------------------------------------------------------------------------
-# Workspace & Contract Query Operations
+# Workspace Query Operations
 # ---------------------------------------------------------------------------
+def list_workspaces() -> List[Dict[str, Any]]:
+    """List all available workspaces."""
+    query = text("SELECT id, name, vertical_id, created_at FROM workspaces ORDER BY created_at ASC")
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query).mappings().all()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error listing workspaces: {e}")
+        return [{"id": "ws_default", "name": "Default Workspace", "vertical_id": "general_b2b"}]
+
+
+def get_workspace(workspace_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch details for a specific workspace."""
+    if not workspace_id:
+        return None
+    query = text("SELECT id, name, vertical_id, created_at FROM workspaces WHERE id = :workspace_id LIMIT 1")
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(query, {"workspace_id": workspace_id}).mappings().first()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error getting workspace {workspace_id}: {e}")
+        return None
+
+
+def create_workspace(workspace_id: str, name: str, vertical_id: str = "general_b2b") -> Dict[str, Any]:
+    """Create or update a workspace."""
+    clean_id = workspace_id.strip().lower()
+    clean_name = name.strip() or f"Workspace {clean_id}"
+    
+    query = text("""
+        INSERT INTO workspaces (id, name, vertical_id)
+        VALUES (:id, :name, :vertical_id)
+        ON DUPLICATE KEY UPDATE name = :name, vertical_id = :vertical_id, updated_at = CURRENT_TIMESTAMP
+    """)
+    with engine.begin() as conn:
+        conn.execute(query, {
+            "id": clean_id,
+            "name": clean_name,
+            "vertical_id": vertical_id
+        })
+    return {"id": clean_id, "name": clean_name, "vertical_id": vertical_id}
+
+
 def get_workspace_vertical(workspace_id: str) -> str:
     """
     Fetch the vertical_id configured for a given workspace.
@@ -374,6 +420,225 @@ def insert_contract(
         "fingerprint_hash": fingerprint_hash,
         "status": status,
     }
+
+
+def _hydrate_contract_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Helper to format dates, parse JSON risk flags, and compute urgency badges."""
+    item = dict(record)
+    
+    # Parse risk flags JSON
+    if item.get("key_risk_flags"):
+        if isinstance(item["key_risk_flags"], str):
+            try:
+                item["key_risk_flags"] = json.loads(item["key_risk_flags"])
+            except Exception:
+                item["key_risk_flags"] = []
+    else:
+        item["key_risk_flags"] = []
+
+    # Calculate deadline countdown and urgency level
+    today = date.today()
+    deadline = item.get("calculated_cancellation_deadline")
+    
+    # Handle string or date objects
+    if isinstance(deadline, str):
+        try:
+            deadline = datetime.strptime(deadline[:10], "%Y-%m-%d").date()
+        except ValueError:
+            deadline = None
+
+    if deadline:
+        days_left = (deadline - today).days
+        item["days_left"] = days_left
+        if days_left < 0:
+            item["urgency"] = "overdue"
+            item["badge_text"] = f"OVERDUE ({abs(days_left)}d ago)"
+            item["badge_class"] = "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+        elif days_left <= 15:
+            item["urgency"] = "critical"
+            item["badge_text"] = f"{days_left}d left · Critical"
+            item["badge_class"] = "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
+        elif days_left <= 45:
+            item["urgency"] = "warning"
+            item["badge_text"] = f"{days_left}d left · Action Soon"
+            item["badge_class"] = "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+        else:
+            item["urgency"] = "normal"
+            item["badge_text"] = f"{days_left}d left"
+            item["badge_class"] = "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+    else:
+        item["days_left"] = None
+        item["urgency"] = "nodate"
+        item["badge_text"] = "No Deadline Stated"
+        item["badge_class"] = "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+
+    return item
+
+
+def get_dashboard_contracts(workspace_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Fetch active contracts and needs-review contracts for a workspace.
+    
+    Active: status = 'active' and confidence_score >= 0.85
+      Ordered by calculated_cancellation_deadline ASC (nulls last), expiration date ASC.
+    Needs Review: status = 'needs_review' OR confidence_score < 0.85
+      Ordered by created_at DESC.
+    """
+    active_query = text("""
+        SELECT * FROM contracts
+        WHERE workspace_id = :workspace_id
+          AND status = 'active'
+          AND (confidence_score >= 0.85 OR confidence_score IS NULL)
+        ORDER BY
+          CASE WHEN calculated_cancellation_deadline IS NULL THEN 1 ELSE 0 END,
+          calculated_cancellation_deadline ASC,
+          expiration_or_renewal_date ASC
+    """)
+
+    needs_review_query = text("""
+        SELECT * FROM contracts
+        WHERE workspace_id = :workspace_id
+          AND (status = 'needs_review' OR confidence_score < 0.85)
+        ORDER BY created_at DESC
+    """)
+
+    active_items: List[Dict[str, Any]] = []
+    review_items: List[Dict[str, Any]] = []
+
+    try:
+        with engine.connect() as conn:
+            active_rows = conn.execute(active_query, {"workspace_id": workspace_id}).mappings().all()
+            for r in active_rows:
+                active_items.append(_hydrate_contract_record(dict(r)))
+
+            review_rows = conn.execute(needs_review_query, {"workspace_id": workspace_id}).mappings().all()
+            for r in review_rows:
+                review_items.append(_hydrate_contract_record(dict(r)))
+    except Exception as e:
+        logger.error(f"Error fetching dashboard contracts for workspace {workspace_id}: {e}")
+
+    return active_items, review_items
+
+
+def get_contract(contract_id: int) -> Optional[Dict[str, Any]]:
+    """Retrieve single contract by ID."""
+    query = text("SELECT * FROM contracts WHERE id = :contract_id LIMIT 1")
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(query, {"contract_id": contract_id}).mappings().first()
+            if not row:
+                return None
+            return _hydrate_contract_record(dict(row))
+    except Exception as e:
+        logger.error(f"Error fetching contract {contract_id}: {e}")
+        return None
+
+
+def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bool:
+    """
+    Update human-reviewed fields and promote contract to status = 'active'.
+    Recalculates cancellation deadline if expiration date and notice days are specified.
+    Preserves existing values when partial updates are supplied.
+    """
+    existing = get_contract(contract_id)
+    if not existing:
+        logger.warning(f"Contract {contract_id} not found for approval")
+        return False
+
+    vendor_name = updates.get("vendor_name")
+    if vendor_name is None:
+        vendor_name = existing.get("vendor_name")
+    vendor_name = str(vendor_name or "").strip()
+
+    contract_title = updates.get("contract_title")
+    if contract_title is None:
+        contract_title = existing.get("contract_title")
+
+    category = updates.get("category")
+    if category is None:
+        category = existing.get("category")
+
+    if "expiration_or_renewal_date" in updates:
+        exp_date = sanitize_date_str(updates.get("expiration_or_renewal_date"))
+    else:
+        exp_date = sanitize_date_str(existing.get("expiration_or_renewal_date"))
+
+    if "notice_period_days" in updates:
+        val = updates.get("notice_period_days")
+        try:
+            notice_days = int(val) if val not in (None, "") else None
+        except (ValueError, TypeError):
+            notice_days = None
+    else:
+        notice_days = existing.get("notice_period_days")
+
+    if "calculated_cancellation_deadline" in updates:
+        cancellation_deadline = sanitize_date_str(updates.get("calculated_cancellation_deadline"))
+    else:
+        cancellation_deadline = sanitize_date_str(existing.get("calculated_cancellation_deadline"))
+
+    # Auto-calculate deadline if unstated but expiration and notice days are present
+    if not cancellation_deadline and exp_date and notice_days is not None:
+        try:
+            exp_dt = datetime.strptime(exp_date, "%Y-%m-%d").date()
+            cancellation_deadline = (exp_dt - timedelta(days=notice_days)).strftime("%Y-%m-%d")
+        except Exception:
+            cancellation_deadline = None
+
+    if "annual_spend_estimate" in updates:
+        val = updates.get("annual_spend_estimate")
+        try:
+            spend_estimate = float(val) if val not in (None, "") else None
+        except (ValueError, TypeError):
+            spend_estimate = None
+    else:
+        spend_estimate = existing.get("annual_spend_estimate")
+
+    if "auto_renewal_term_months" in updates:
+        val = updates.get("auto_renewal_term_months")
+        try:
+            auto_renewal_term_months = int(val) if val not in (None, "") else None
+        except (ValueError, TypeError):
+            auto_renewal_term_months = None
+    else:
+        auto_renewal_term_months = existing.get("auto_renewal_term_months")
+
+    update_sql = text("""
+        UPDATE contracts SET
+            vendor_name = COALESCE(NULLIF(:vendor_name, ''), vendor_name),
+            contract_title = COALESCE(NULLIF(:contract_title, ''), contract_title),
+            category = COALESCE(NULLIF(:category, ''), category),
+            expiration_or_renewal_date = :exp_date,
+            notice_period_days = :notice_days,
+            calculated_cancellation_deadline = :cancellation_deadline,
+            annual_spend_estimate = :spend_estimate,
+            auto_renewal_term_months = :auto_renewal_term_months,
+            status = 'active',
+            confidence_score = 1.0,
+            is_valid_contract_or_renewal = 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :contract_id
+    """)
+
+    params = {
+        "contract_id": contract_id,
+        "vendor_name": vendor_name,
+        "contract_title": contract_title,
+        "category": category,
+        "exp_date": exp_date,
+        "notice_days": notice_days,
+        "cancellation_deadline": cancellation_deadline,
+        "spend_estimate": spend_estimate,
+        "auto_renewal_term_months": auto_renewal_term_months,
+    }
+
+    try:
+        with engine.begin() as conn:
+            result = conn.execute(update_sql, params)
+            return result.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error approving contract {contract_id}: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------

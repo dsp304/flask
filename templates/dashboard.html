@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+
+{% block title %}{{ current_workspace.name }} · Contract Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+  <!-- Workspace Header & Quick Stats -->
+  <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+      
+      <!-- Left: Title & Vertical Info -->
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+            {{ current_workspace.name }}
+          </h1>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+            {{ vertical_info.display_name }}
+          </span>
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            ID: {{ current_workspace.id }}
+          </span>
+        </div>
+        
+        <p class="text-sm text-slate-600 dark:text-slate-400">
+          Target vertical: <strong class="text-slate-800 dark:text-slate-200">{{ vertical_info.display_name }}</strong> · 
+          Default alert lead time: <strong class="text-slate-800 dark:text-slate-200">{{ vertical_info.default_alert_lead_days }} days</strong> prior to cancellation cutoff.
+        </p>
+
+        <!-- Inbound Email Address Pill -->
+        <div class="pt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span class="text-slate-500 dark:text-slate-400 font-medium">Inbound Webhook Routing Address:</span>
+          <div class="flex items-center bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-slate-200">
+            <span id="inbound-addr">watchdog+{{ current_workspace.id }}@{{ request.host }}</span>
+            <button onclick="copyInboundEmail()" class="ml-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-semibold" title="Copy to clipboard">
+              Copy
+            </button>
+          </div>
+          <a href="/onboarding" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium ml-1">View email filters &rarr;</a>
+        </div>
+      </div>
+
+      <!-- Right: Summary Metrics -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 md:min-w-[340px]">
+        <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Spend</div>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mt-1">
+            ${{ "{:,.0f}".format(total_spend) }}
+          </div>
+          <div class="text-[11px] text-slate-500 mt-0.5">{{ active_contracts|length }} active contracts</div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Needs Review</div>
+          <div class="text-xl sm:text-2xl font-bold {% if review_contracts %}text-amber-600 dark:text-amber-400{% else %}text-slate-900 dark:text-white{% endif %} mt-1">
+            {{ review_contracts|length }}
+          </div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Low confidence / flags</div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/60 col-span-2 sm:col-span-1">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Upcoming Deadlines</div>
+          <div class="text-xl sm:text-2xl font-bold {% if critical_deadlines > 0 %}text-rose-600 dark:text-rose-400{% else %}text-slate-900 dark:text-white{% endif %} mt-1">
+            {{ critical_deadlines }}
+          </div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Next 45 days</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- SECTION: NEEDS REVIEW (Low Confidence / Flagged Contracts) -->
+  {% if review_contracts %}
+  <section class="space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="flex h-3 w-3 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+        </span>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white">Needs Review (Audit Queue)</h2>
+        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          {{ review_contracts|length }} pending
+        </span>
+      </div>
+      <p class="text-xs text-slate-500 hidden sm:block">Items flagged with confidence &lt; 0.85 or unverified notice terms</p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4">
+      {% for contract in review_contracts %}
+      <div class="bg-white dark:bg-slate-900 border-2 border-amber-300/80 dark:border-amber-700/70 rounded-xl p-5 shadow-sm hover:shadow-md transition">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          
+          <!-- Contract summary info -->
+          <div class="space-y-2 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-bold text-base text-slate-900 dark:text-white">
+                {{ contract.vendor_name or "Unknown Vendor" }}
+              </span>
+              <span class="text-slate-400">·</span>
+              <span class="text-sm font-medium text-slate-700 dark:text-slate-300">
+                {{ contract.contract_title or "Untitled Agreement" }}
+              </span>
+              {% if contract.category %}
+                <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {{ contract.category }}
+                </span>
+              {% endif %}
+              <span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                Confidence: {{ "{:.0%}".format(contract.confidence_score or 0) }}
+              </span>
+            </div>
+
+            <!-- Email source & subject -->
+            <div class="text-xs text-slate-500 flex flex-wrap items-center gap-2">
+              {% if contract.sender_email %}<span>From: <strong class="text-slate-700 dark:text-slate-300">{{ contract.sender_email }}</strong></span>{% endif %}
+              {% if contract.email_subject %}<span>Subject: "{{ contract.email_subject }}"</span>{% endif %}
+            </div>
+
+            <!-- Source quote callout -->
+            {% if contract.source_evidence_quote %}
+            <div class="text-xs italic bg-amber-50/70 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 p-2.5 rounded-lg border-l-4 border-amber-400">
+              &ldquo;{{ contract.source_evidence_quote }}&rdquo;
+            </div>
+            {% endif %}
+
+            <!-- Risk flags -->
+            {% if contract.key_risk_flags %}
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              {% for flag in contract.key_risk_flags %}
+                <span class="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                  ⚠️ {{ flag }}
+                </span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Action: Open Review Modal Button -->
+          <div class="flex items-center space-x-3 pt-2 lg:pt-0">
+            <button 
+              type="button"
+              onclick="openReviewModal({{ contract.id }})" 
+              class="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 shadow-sm transition">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span>Review & Approve</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+
+  <!-- SECTION: ACTIVE CONTRACTS (Ordered by Cancellation Deadline ASC) -->
+  <section class="space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white">Active Monitored Contracts</h2>
+        <p class="text-xs text-slate-500">Sorted by earliest cancellation notice deadline first</p>
+      </div>
+      <div class="text-xs text-slate-500">
+        {{ active_contracts|length }} contracts tracked
+      </div>
+    </div>
+
+    {% if active_contracts %}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 uppercase font-semibold">
+            <tr>
+              <th scope="col" class="py-3.5 px-4 sm:px-6">Cancellation Deadline</th>
+              <th scope="col" class="py-3.5 px-4">Vendor & Agreement</th>
+              <th scope="col" class="py-3.5 px-4">Category</th>
+              <th scope="col" class="py-3.5 px-4">Notice Required</th>
+              <th scope="col" class="py-3.5 px-4">Contract Expiration</th>
+              <th scope="col" class="py-3.5 px-4">Annual Spend</th>
+              <th scope="col" class="py-3.5 px-4 sm:px-6 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+            {% for c in active_contracts %}
+            <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+              
+              <!-- Cancellation Deadline & Urgency Badge -->
+              <td class="py-4 px-4 sm:px-6 whitespace-nowrap">
+                <div class="flex flex-col">
+                  {% if c.calculated_cancellation_deadline %}
+                    <span class="font-bold text-slate-900 dark:text-white text-base">
+                      {{ c.calculated_cancellation_deadline }}
+                    </span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border mt-1 w-max {{ c.badge_class }}">
+                      {{ c.badge_text }}
+                    </span>
+                  {% else %}
+                    <span class="text-slate-400 italic">No deadline set</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border mt-1 w-max {{ c.badge_class }}">
+                      {{ c.badge_text }}
+                    </span>
+                  {% endif %}
+                </div>
+              </td>
+
+              <!-- Vendor & Title -->
+              <td class="py-4 px-4">
+                <div class="font-semibold text-slate-900 dark:text-white">{{ c.vendor_name or "Unknown Vendor" }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">{{ c.contract_title or "Standard Agreement" }}</div>
+                {% if c.key_risk_flags %}
+                  <div class="flex flex-wrap gap-1 mt-1.5">
+                    {% for flag in c.key_risk_flags[:2] %}
+                      <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium truncate max-w-[200px]" title="{{ flag }}">
+                        ⚠️ {{ flag }}
+                      </span>
+                    {% endfor %}
+                    {% if c.key_risk_flags|length > 2 %}
+                      <span class="text-[10px] text-slate-400">+{{ c.key_risk_flags|length - 2 }} more</span>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </td>
+
+              <!-- Category -->
+              <td class="py-4 px-4 whitespace-nowrap">
+                <span class="px-2 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {{ c.category or "General" }}
+                </span>
+              </td>
+
+              <!-- Notice Period -->
+              <td class="py-4 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                {% if c.notice_period_days %}
+                  <strong class="font-semibold">{{ c.notice_period_days }}</strong> days prior
+                {% else %}
+                  <span class="text-slate-400">&mdash;</span>
+                {% endif %}
+              </td>
+
+              <!-- Expiration Date -->
+              <td class="py-4 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                {% if c.expiration_or_renewal_date %}
+                  <div>{{ c.expiration_or_renewal_date }}</div>
+                  {% if c.auto_renewal_term_months %}
+                    <div class="text-[11px] text-slate-500">+{{ c.auto_renewal_term_months }}m rollover</div>
+                  {% endif %}
+                {% else %}
+                  <span class="text-slate-400">&mdash;</span>
+                {% endif %}
+              </td>
+
+              <!-- Annual Spend -->
+              <td class="py-4 px-4 whitespace-nowrap">
+                {% if c.annual_spend_estimate %}
+                  <span class="font-semibold text-slate-900 dark:text-white">${{ "{:,.2f}".format(c.annual_spend_estimate) }}</span>
+                  <span class="text-xs text-slate-400 font-mono">{{ c.currency or "USD" }}</span>
+                {% else %}
+                  <span class="text-slate-400">&mdash;</span>
+                {% endif %}
+              </td>
+
+              <!-- Actions -->
+              <td class="py-4 px-4 sm:px-6 whitespace-nowrap text-right">
+                <button 
+                  type="button" 
+                  onclick="openReviewModal({{ c.id }})" 
+                  class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline">
+                  Edit Details
+                </button>
+              </td>
+
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center shadow-sm">
+      <div class="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 mx-auto mb-4">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 dark:text-white">No active contracts found for this workspace</h3>
+      <p class="text-sm text-slate-500 max-w-md mx-auto mt-1 mb-6">
+        Forward vendor renewal emails, invoices, or leases to your dedicated address, or simulate an inbound webhook using the test curl command.
+      </p>
+      <div class="flex justify-center space-x-3">
+        <a href="/onboarding" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition">
+          View Setup & Email Keywords &rarr;
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+
+
+<!-- ========================================================================= -->
+<!-- SIDE-BY-SIDE REVIEW / APPROVAL MODAL -->
+<!-- ========================================================================= -->
+<div id="review-modal" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <!-- Backdrop -->
+  <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onclick="closeReviewModal()"></div>
+
+  <div class="flex min-h-full items-center justify-center p-4 sm:p-6">
+    <div class="relative w-full max-w-5xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-indigo-600">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white" id="modal-title">Contract Audit & Approval</h3>
+            <p class="text-xs text-slate-500">Verify extracted terms against source text before activating automatic monitoring</p>
+          </div>
+        </div>
+        <button onclick="closeReviewModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl font-bold leading-none">&times;</button>
+      </div>
+
+      <!-- Side-by-Side Modal Body -->
+      <div class="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-h-[75vh] overflow-y-auto">
+        
+        <!-- LEFT COLUMN (5 Cols): AI Audit Evidence & Raw Source -->
+        <div class="lg:col-span-5 space-y-4 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Source Evidence</h4>
+            <div id="modal-evidence" class="text-sm italic bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200">
+              <!-- Injected by JS -->
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Identified Risk Flags</h4>
+            <div id="modal-risk-flags" class="space-y-1.5">
+              <!-- Injected by JS -->
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Source Email Details</h4>
+            <div class="text-xs space-y-1 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+              <div><strong>Sender:</strong> <span id="modal-sender"></span></div>
+              <div><strong>Subject:</strong> <span id="modal-subject"></span></div>
+              <div><strong>Confidence:</strong> <span id="modal-confidence" class="font-bold"></span></div>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Raw Message / Attachment Text</h4>
+            <textarea id="modal-raw" readonly class="w-full h-32 text-xs font-mono bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 resize-none focus:outline-none"></textarea>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN (7 Cols): Editable Fields Form -->
+        <div class="lg:col-span-7">
+          <form id="approval-form" method="POST" action="" class="space-y-4">
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="vendor_name" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Vendor Name *</label>
+                <input type="text" id="vendor_name" name="vendor_name" required class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+
+              <div>
+                <label for="contract_title" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Contract / Agreement Title</label>
+                <input type="text" id="contract_title" name="contract_title" class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+            </div>
+
+            <div>
+              <label for="category" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Category</label>
+              <select id="category" name="category" class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                {% for cat in vertical_info.categories %}
+                  <option value="{{ cat }}">{{ cat }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="expiration_or_renewal_date" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Expiration / Renewal Date</label>
+                <input type="date" id="expiration_or_renewal_date" name="expiration_or_renewal_date" onchange="autoCalculateDeadline()" class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+
+              <div>
+                <label for="notice_period_days" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Notice Period (Days Required)</label>
+                <input type="number" id="notice_period_days" name="notice_period_days" min="0" max="365" onchange="autoCalculateDeadline()" class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+            </div>
+
+            <div class="bg-indigo-50/50 dark:bg-indigo-950/20 p-3.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+              <label for="calculated_cancellation_deadline" class="block text-xs font-bold text-indigo-950 dark:text-indigo-200 mb-1">
+                Calculated Cancellation Notice Deadline *
+              </label>
+              <input type="date" id="calculated_cancellation_deadline" name="calculated_cancellation_deadline" required class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-indigo-900 dark:text-indigo-100">
+              <span class="text-[11px] text-slate-500 mt-1 block">Deadline is automatically updated when you edit expiration date or notice period.</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="annual_spend_estimate" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Annual Spend Estimate ($ USD)</label>
+                <input type="number" step="0.01" id="annual_spend_estimate" name="annual_spend_estimate" class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+
+              <div>
+                <label for="auto_renewal_term_months" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Auto-Renewal Extension (Months)</label>
+                <input type="number" id="auto_renewal_term_months" name="auto_renewal_term_months" min="0" class="w-full text-sm px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-3">
+              <button type="button" onclick="closeReviewModal()" class="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
+                Cancel
+              </button>
+              <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition flex items-center space-x-1.5">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Approve & Set Active</span>
+              </button>
+            </div>
+
+          </form>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Embedded Contracts JSON for interactive modal hydration -->
+<script>
+  const contractsData = {{ all_contracts_json|safe }};
+
+  function openReviewModal(contractId) {
+    const item = contractsData.find(c => c.id === contractId);
+    if (!item) return;
+
+    // Set Form Action URL
+    document.getElementById('approval-form').action = `/contracts/${item.id}/approve?workspace_id={{ current_workspace.id }}`;
+
+    // Populate Right Form Fields
+    document.getElementById('vendor_name').value = item.vendor_name || '';
+    document.getElementById('contract_title').value = item.contract_title || '';
+    if (item.category) {
+      document.getElementById('category').value = item.category;
+    }
+    document.getElementById('expiration_or_renewal_date').value = item.expiration_or_renewal_date || '';
+    document.getElementById('notice_period_days').value = item.notice_period_days !== null ? item.notice_period_days : '';
+    document.getElementById('calculated_cancellation_deadline').value = item.calculated_cancellation_deadline || '';
+    document.getElementById('annual_spend_estimate').value = item.annual_spend_estimate || '';
+    document.getElementById('auto_renewal_term_months').value = item.auto_renewal_term_months || '';
+
+    // Populate Left Evidence Box
+    document.getElementById('modal-evidence').textContent = item.source_evidence_quote || 'No verbatim evidence quote extracted.';
+    document.getElementById('modal-sender').textContent = item.sender_email || 'N/A';
+    document.getElementById('modal-subject').textContent = item.email_subject || 'N/A';
+    document.getElementById('modal-confidence').textContent = item.confidence_score ? `${Math.round(item.confidence_score * 100)}%` : 'Unscored';
+    document.getElementById('modal-raw').value = item.raw_content || 'No raw message text preserved.';
+
+    // Populate Risk Flags
+    const flagsContainer = document.getElementById('modal-risk-flags');
+    flagsContainer.innerHTML = '';
+    if (item.key_risk_flags && item.key_risk_flags.length > 0) {
+      item.key_risk_flags.forEach(f => {
+        const span = document.createElement('div');
+        span.className = 'text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800';
+        span.textContent = `⚠️ ${f}`;
+        flagsContainer.appendChild(span);
+      });
+    } else {
+      flagsContainer.innerHTML = '<span class="text-xs text-slate-400 italic">No specific risk flags detected.</span>';
+    }
+
+    // Show modal
+    document.getElementById('review-modal').classList.remove('hidden');
+  }
+
+  function closeReviewModal() {
+    document.getElementById('review-modal').classList.add('hidden');
+  }
+
+  function autoCalculateDeadline() {
+    const expInput = document.getElementById('expiration_or_renewal_date').value;
+    const noticeDays = parseInt(document.getElementById('notice_period_days').value, 10);
+    const deadlineInput = document.getElementById('calculated_cancellation_deadline');
+
+    if (expInput && !isNaN(noticeDays)) {
+      const expDate = new Date(expInput);
+      expDate.setDate(expDate.getDate() - noticeDays);
+      const yyyy = expDate.toISOString().split('T')[0];
+      deadlineInput.value = yyyy;
+    }
+  }
+
+  function copyInboundEmail() {
+    const addr = document.getElementById('inbound-addr').textContent;
+    navigator.clipboard.writeText(addr).then(() => {
+      alert('Inbound email address copied to clipboard!');
+    });
+  }
+</script>
+{% endblock %}
