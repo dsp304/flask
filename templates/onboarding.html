@@ -8,10 +8,10 @@
   <!-- Header -->
   <div class="text-center space-y-2">
     <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-      Set Up a New Procurement Workspace
+      Create Your Workspace
     </h1>
     <p class="text-sm text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-      Select your industry vertical to apply specialized AI prompt constraints, risk traps, and auto-generated email filtering rules.
+      Choose your industry to get tailored contract renewal alerts.
     </p>
   </div>
 
@@ -28,27 +28,27 @@
         </svg>
       </div>
       <div>
-        <h2 class="text-xl font-bold text-slate-900 dark:text-white">Workspace Created Successfully!</h2>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white">Workspace Created!</h2>
         <p class="text-xs text-slate-500">{{ created_workspace.name }} is active and ready to monitor contracts.</p>
       </div>
     </div>
 
-    <!-- Authorized Emails & Vertical Profile Note (Task 7 Requirement) -->
+    <!-- Authorized Emails & Profile -->
     <div class="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 rounded-xl p-4 sm:p-5 space-y-2">
       <div class="flex items-center space-x-2 text-indigo-800 dark:text-indigo-300 font-semibold text-xs uppercase tracking-wider">
         <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
-        <span>Workspace Scoping & Membership Profile</span>
+        <span>Workspace Details</span>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
         <div>
-          <span class="text-slate-500 dark:text-slate-400 block font-medium">Vertical Profile:</span>
+          <span class="text-slate-500 dark:text-slate-400 block font-medium">Industry Profile:</span>
           <span class="font-bold text-slate-900 dark:text-white">{{ selected_vertical.display_name }}</span>
-          <span class="text-slate-500 block text-[11px]">(Default Alert Window: {{ selected_vertical.default_alert_lead_days }} days)</span>
+          <span class="text-slate-500 block text-[11px]">(Alerts sent {{ selected_vertical.default_alert_lead_days }} days before notice cutoff)</span>
         </div>
         <div>
-          <span class="text-slate-500 dark:text-slate-400 block font-medium">Authorized Member Email(s):</span>
+          <span class="text-slate-500 dark:text-slate-400 block font-medium">Authorized Email(s):</span>
           <div class="flex flex-wrap gap-1.5 pt-0.5">
             {% if workspace_emails %}
               {% for em in workspace_emails %}
@@ -62,21 +62,17 @@
           </div>
         </div>
       </div>
-      <p class="text-[11px] text-slate-500 dark:text-slate-400 pt-1">
-        This workspace is private and will only appear in the workspace switcher for the authorized email accounts listed above.
-      </p>
     </div>
 
     <!-- 1. Inbound Email Address -->
     <div class="space-y-2 bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-700">
       <div class="flex items-center justify-between">
         <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-          1. Dedicated Inbound Email Address
+          1. Forwarding Address
         </span>
-        <span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">Postmark & Direct Webhook Compatible</span>
       </div>
       <p class="text-xs text-slate-500">
-        Forward vendor renewal notices, leases, invoices, or COIs to this address:
+        Forward vendor renewal notices, leases, invoices, or contracts to this address:
       </p>
       <div class="flex items-center justify-between bg-white dark:bg-slate-900 px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono text-sm text-slate-900 dark:text-white">
         <span id="created-inbound-addr">watchdog+{{ created_workspace.id }}@{{ request.host }}</span>
@@ -90,18 +86,17 @@
     <div class="space-y-2 bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-700">
       <div class="flex items-center justify-between">
         <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-          2. Copy-Pasteable Filter Keywords ({{ selected_vertical.display_name }})
+          2. Filter Keywords
         </span>
-        <span class="text-[11px] text-slate-500">{{ selected_vertical.search_keywords|length }} targeted terms</span>
       </div>
       <p class="text-xs text-slate-500">
-        Paste this query into Gmail or Microsoft 365 search to automatically forward relevant procurement emails to your watchdog:
+        Paste this search into Gmail or Outlook to automatically forward contracts:
       </p>
       <div class="relative bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-300 dark:border-slate-700">
-        <textarea id="filter-keywords" readonly class="w-full h-20 text-xs font-mono bg-transparent text-slate-800 dark:text-slate-200 resize-none focus:outline-none">{{ search_query_string }}</textarea>
+        <textarea id="filter-keywords" readonly class="w-full h-16 text-xs font-mono bg-transparent text-slate-800 dark:text-slate-200 resize-none focus:outline-none">{{ search_query_string }}</textarea>
         <div class="flex justify-end pt-2">
           <button onclick="copyText('filter-keywords')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold text-xs transition shadow-sm">
-            Copy Query String
+            Copy Keywords
           </button>
         </div>
       </div>
@@ -111,25 +106,25 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
       <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-1.5">
         <h4 class="font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
-          <span>📬 Google Workspace / Gmail Setup</span>
+          <span>📬 Gmail / Google Setup</span>
         </h4>
         <ol class="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400 pt-1">
-          <li>Click the search options icon in the Gmail search box.</li>
-          <li>Paste the copied query string into the <strong>"Has the words"</strong> field.</li>
+          <li>Click the search filter icon in Gmail.</li>
+          <li>Paste the copied keywords into <strong>"Has the words"</strong>.</li>
           <li>Click <strong>"Create filter"</strong>.</li>
-          <li>Check <strong>"Forward it to"</strong> and add your inbound address above.</li>
+          <li>Check <strong>"Forward it to"</strong> and add your forwarding address above.</li>
         </ol>
       </div>
 
       <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-1.5">
         <h4 class="font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
-          <span>📧 Microsoft 365 / Outlook Setup</span>
+          <span>📧 Outlook / Microsoft Setup</span>
         </h4>
         <ol class="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400 pt-1">
           <li>Go to Settings &rarr; Mail &rarr; <strong>Rules</strong>.</li>
-          <li>Add a new rule: <em>"Contract Renewal Auto-Forward"</em>.</li>
-          <li>Condition: <em>"Subject or body includes any of these words"</em> (paste terms).</li>
-          <li>Action: <em>"Forward to"</em> your dedicated inbound address.</li>
+          <li>Add a new rule.</li>
+          <li>Condition: <em>"Subject or body includes any of these words"</em> (paste keywords).</li>
+          <li>Action: <em>"Forward to"</em> your forwarding address above.</li>
         </ol>
       </div>
     </div>
@@ -156,9 +151,8 @@
 
     <!-- 1. Workspace Details & Email Scoping -->
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm space-y-5">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-bold text-slate-900 dark:text-white">1. Workspace Identification & Access Scoping</h2>
-        <span class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">Multi-Email Authorization</span>
+      <div>
+        <h2 class="text-lg font-bold text-slate-900 dark:text-white">1. Workspace Details</h2>
       </div>
       
       <div>
@@ -168,11 +162,11 @@
         <input type="text" id="name" name="name" required placeholder="e.g. Apex Property Management" class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white">
       </div>
 
-      <!-- Email Scoping Fields (Task 7 Requirement) -->
+      <!-- Email Scoping Fields -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
         <div>
           <label for="creator_email" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Primary Associated Email (Signed In)
+            Primary Email (Signed In)
           </label>
           <input 
             type="email" 
@@ -181,12 +175,12 @@
             value="{{ session.get('user_email', 'admin@contractwatchdog.com') }}" 
             required 
             class="w-full text-sm px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
-          <p class="text-[11px] text-slate-400 mt-1">Defaults to your active OAuth sign-in email.</p>
+          <p class="text-[11px] text-slate-400 mt-1">Defaults to your sign-in email.</p>
         </div>
 
         <div>
           <label for="secondary_email" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Additional Linked Email (Optional)
+            Additional Email (Optional)
           </label>
           <input 
             type="email" 
@@ -194,7 +188,7 @@
             name="secondary_email" 
             placeholder="e.g. billing@subsidiary.com" 
             class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
-          <p class="text-[11px] text-slate-400 mt-1">Authorize another email to manage this workspace in their switcher.</p>
+          <p class="text-[11px] text-slate-400 mt-1">Authorize another email to view this workspace.</p>
         </div>
       </div>
 
@@ -203,8 +197,8 @@
     <!-- Vertical Selection Grid -->
     <div class="space-y-4">
       <div>
-        <h2 class="text-lg font-bold text-slate-900 dark:text-white">2. Select Your Procurement Vertical</h2>
-        <p class="text-xs text-slate-500">Each vertical tunes the AI prompt to catch hidden notice traps, CPI escalators, and equipment rollover clauses.</p>
+        <h2 class="text-lg font-bold text-slate-900 dark:text-white">2. Select Your Industry</h2>
+        <p class="text-xs text-slate-500">Choose your industry for tailored contract renewal tracking.</p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -254,7 +248,7 @@
     <div class="flex items-center justify-end space-x-4 pt-4">
       <a href="/" class="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">Cancel</a>
       <button type="submit" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-indigo-500/20 transition flex items-center space-x-2">
-        <span>Create Workspace & Generate Forwarding Rules</span>
+        <span>Create Workspace</span>
         <span>&rarr;</span>
       </button>
     </div>

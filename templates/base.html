@@ -61,7 +61,7 @@
         </div>
         {% else %}
         <a href="/auth/login{% if vertical_id %}?vertical={{ vertical_id }}{% endif %}" class="inline-flex items-center space-x-1 text-xs sm:text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
-          <span>Sign-in with Google or Microsoft</span>
+          <span>Sign in with Google or Microsoft</span>
           <span>&rarr;</span>
         </a>
         {% endif %}
@@ -69,15 +69,6 @@
       </div>
     </div>
   </header>
-
-  <!-- Demo Mode Banner -->
-  {% if is_demo %}
-  <div class="bg-indigo-600 text-white px-4 py-2 text-xs font-medium text-center shadow-inner flex items-center justify-center space-x-2">
-    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-    <span><strong>Demo Mode (Read-Only):</strong> You are inspecting sample contracts for the default workspace.</span>
-    <a href="/auth/login" class="underline font-bold hover:text-indigo-200 ml-2">Sign in with Google / Microsoft to manage your live contracts &rarr;</a>
-  </div>
-  {% endif %}
 
   <!-- Flash Messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -107,12 +98,10 @@
   <footer class="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 py-6">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-3">
       <div>
-        <span class="font-semibold text-slate-700 dark:text-slate-300">Contract Renewal Watchdog</span> · AI Procurement Risk Intelligence
+        <span class="font-semibold text-slate-700 dark:text-slate-300">Contract Watchdog</span> · Automated Renewal Alerts
       </div>
-      <div class="flex items-center space-x-4">
-        <span>Powered by Gemini 3.5 Flash-Lite & MySQL</span>
-        <a href="/onboarding" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition">Vertical Setup</a>
-        <a href="/api/health" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition">Webhook Health</a>
+      <div>
+        <span>Powered by Google Gemini & MySQL</span>
       </div>
     </div>
   </footer>

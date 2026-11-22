@@ -22,7 +22,7 @@
             <select name="workspace_id" onchange="this.form.submit()" class="text-xs sm:text-sm bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 dark:text-slate-300 shadow-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer">
               {% for ws in all_workspaces %}
                 <option value="{{ ws.id }}" {% if current_workspace and current_workspace.id == ws.id %}selected{% endif %}>
-                  Workspace: {{ ws.name }}
+                  {{ ws.name }}
                 </option>
               {% endfor %}
             </select>
@@ -35,8 +35,7 @@
         </div>
         
         <p class="text-sm text-slate-600 dark:text-slate-400">
-          Target vertical: <strong class="text-slate-800 dark:text-slate-200">{{ vertical_info.display_name }}</strong> · 
-          Default alert lead time: <strong class="text-slate-800 dark:text-slate-200">{{ vertical_info.default_alert_lead_days }} days</strong> prior to cancellation cutoff.
+          Alerts sent <strong>{{ vertical_info.default_alert_lead_days }} days</strong> before notice cutoff.
         </p>
 
         <!-- Action Buttons: Show Email Setup & New Workspace -->
@@ -312,21 +311,10 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       </div>
-      <h3 class="text-base font-bold text-slate-900 dark:text-white">No active contracts found for this workspace</h3>
-      <p class="text-sm text-slate-500 max-w-md mx-auto mt-1 mb-6">
-        Forward vendor contracts, renewal notices, or invoices to your workspace to start automated tracking.
+      <h3 class="text-base font-bold text-slate-900 dark:text-white">No active contracts yet</h3>
+      <p class="text-sm text-slate-500 max-w-md mx-auto mt-1">
+        Forward vendor contracts or renewal notices to start tracking deadlines automatically.
       </p>
-      <div class="flex justify-center space-x-3">
-        <button 
-          type="button" 
-          onclick="openEmailSetupModal()" 
-          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition flex items-center space-x-2">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          <span>Show email setup</span>
-        </button>
-      </div>
     </div>
     {% endif %}
   </section>
@@ -501,12 +489,9 @@
 
       <!-- Forwarding Address Box -->
       <div class="space-y-2 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-            Your Dedicated Forwarding Address
-          </span>
-          <span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">Workspace Inbox</span>
-        </div>
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+          Your Forwarding Address
+        </span>
         <div class="flex items-center justify-between bg-white dark:bg-slate-900 px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono text-sm text-slate-900 dark:text-white">
           <span id="setup-forward-addr">watchdog+{{ current_workspace.id }}@{{ request.host }}</span>
           <button onclick="copyElementText('setup-forward-addr', 'Forwarding address copied to clipboard!')" class="ml-3 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded font-semibold text-xs transition">
@@ -517,17 +502,14 @@
 
       <!-- Filter Keywords Box -->
       <div class="space-y-2 bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-            Recommended Search Query ({{ vertical_info.display_name }})
-          </span>
-          <span class="text-[11px] text-slate-500">{{ vertical_info.search_keywords|length }} targeted terms</span>
-        </div>
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+          Filter Keywords
+        </span>
         <div class="relative bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-300 dark:border-slate-700">
           <textarea id="setup-keywords" readonly class="w-full h-16 text-xs font-mono bg-transparent text-slate-800 dark:text-slate-200 resize-none focus:outline-none">{{ search_query_string }}</textarea>
           <div class="flex justify-end pt-1">
-            <button onclick="copyElementText('setup-keywords', 'Search query copied to clipboard!')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-xs transition shadow-sm">
-              Copy Query
+            <button onclick="copyElementText('setup-keywords', 'Keywords copied to clipboard!')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-xs transition shadow-sm">
+              Copy Keywords
             </button>
           </div>
         </div>
@@ -541,11 +523,11 @@
           <!-- Gmail -->
           <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 space-y-2">
             <div class="font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
-              <span>📬 Google Workspace / Gmail</span>
+              <span>📬 Gmail / Google</span>
             </div>
             <ol class="list-decimal list-inside space-y-1.5 text-slate-600 dark:text-slate-400">
               <li>Click the filter icon in the Gmail search bar.</li>
-              <li>Paste the search query into <strong>"Has the words"</strong>.</li>
+              <li>Paste the keywords into <strong>"Has the words"</strong>.</li>
               <li>Click <strong>"Create filter"</strong>.</li>
               <li>Select <strong>"Forward it to"</strong> and enter your forwarding address above.</li>
             </ol>
@@ -554,12 +536,12 @@
           <!-- Outlook -->
           <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 space-y-2">
             <div class="font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
-              <span>📧 Microsoft 365 / Outlook</span>
+              <span>📧 Outlook / Microsoft</span>
             </div>
             <ol class="list-decimal list-inside space-y-1.5 text-slate-600 dark:text-slate-400">
               <li>Open <strong>Settings &rarr; Mail &rarr; Rules</strong>.</li>
               <li>Click <strong>Add new rule</strong>.</li>
-              <li>Condition: <em>Subject or body includes any of these words</em> (paste query).</li>
+              <li>Condition: <em>Subject or body includes any of these words</em> (paste keywords).</li>
               <li>Action: <em>Forward to</em> your forwarding address above.</li>
             </ol>
           </div>

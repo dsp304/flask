@@ -254,7 +254,7 @@ def auth_google():
     if not workspaces:
         flash(f"Signed in with Google as {mock_email}. Please create your first workspace.", "info")
         return redirect(url_for("onboarding", vertical=vertical_id))
-    flash(f"Authenticated via Google Workspace as {mock_email}.", "success")
+    flash(f"Signed in with Google as {mock_email}.", "success")
     return redirect(url_for("dashboard"))
 
 
@@ -287,7 +287,7 @@ def auth_microsoft():
     if not workspaces:
         flash(f"Signed in with Microsoft as {mock_email}. Please create your first workspace.", "info")
         return redirect(url_for("onboarding", vertical=vertical_id))
-    flash(f"Authenticated via Microsoft 365 as {mock_email}.", "success")
+    flash(f"Signed in with Microsoft as {mock_email}.", "success")
     return redirect(url_for("dashboard"))
 
 
@@ -352,7 +352,7 @@ def dashboard():
     # 2. Enforce Authentication
     user_email = session.get("user_email")
     if not user_email:
-        flash("Please sign in with Google or Microsoft to view your procurement dashboard.", "info")
+        flash("Please sign in with Google or Microsoft to view your dashboard.", "info")
         return redirect(url_for("auth_login"))
 
     # 3. Retrieve workspaces scoped to this authenticated user
