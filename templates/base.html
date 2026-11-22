@@ -51,11 +51,15 @@
 
         <!-- Right Side: User Session or Sign-in -->
         {% if session.get('user_email') %}
-        <div class="flex items-center space-x-3 text-xs">
-          <span class="font-mono text-slate-500 dark:text-slate-400 hidden sm:inline" title="{{ session.get('user_email') }}">
-            {{ session.get('user_email') }}
+        <div class="flex items-center space-x-3 text-xs sm:text-sm">
+          <span class="text-slate-600 dark:text-slate-400">
+            Welcome 
+            <a href="/dashboard" class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline hover:text-indigo-700 dark:hover:text-indigo-300 transition" title="Go to Dashboard">
+              {{ session.get('user_name') or session.get('user_email').split('@')[0] }}
+            </a>
           </span>
-          <a href="/auth/logout" class="px-2 py-1 text-xs font-medium text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition">
+          <span class="text-slate-300 dark:text-slate-700">|</span>
+          <a href="/auth/logout" class="text-xs font-medium text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition">
             Sign out
           </a>
         </div>

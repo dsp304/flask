@@ -208,6 +208,7 @@ def auth_login():
             return redirect(url_for("auth_login", vertical=vertical_id))
 
         session["user_email"] = email
+        session["user_name"] = email.split("@")[0]
         logger.info(f"User authenticated with work email: {email}")
 
         # Check existing workspaces; if none, redirect user to create their first workspace
@@ -253,6 +254,7 @@ def auth_google():
     # Simulated / Instant Google Workspace Sign-In for dev & testing
     mock_email = (request.args.get("email") or f"user@workspace.com").strip().lower()
     session["user_email"] = mock_email
+    session["user_name"] = mock_email.split("@")[0]
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
         flash(f"Signed in with Google as {mock_email}. Please create your first workspace.", "info")
@@ -286,6 +288,7 @@ def auth_microsoft():
     # Simulated / Instant Microsoft 365 Sign-In for dev & testing
     mock_email = (request.args.get("email") or f"user@enterprise.onmicrosoft.com").strip().lower()
     session["user_email"] = mock_email
+    session["user_name"] = mock_email.split("@")[0]
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
         flash(f"Signed in with Microsoft as {mock_email}. Please create your first workspace.", "info")
@@ -307,6 +310,7 @@ def auth_callback(provider: str = "google"):
     email = request.args.get("email") or session.get("user_email") or f"{provider}_user@company.com"
     email = email.strip().lower()
     session["user_email"] = email
+    session["user_name"] = email.split("@")[0]
 
     workspaces = get_user_workspaces(email)
     if not workspaces:
