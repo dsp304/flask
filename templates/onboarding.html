@@ -147,6 +147,16 @@
   <!-- ======================================================================= -->
   <!-- ONBOARDING FORM: SELECT VERTICAL & CREATE WORKSPACE (POST /workspaces/create) -->
   <!-- ======================================================================= -->
+  <div class="p-3.5 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-indigo-900 dark:text-indigo-200">
+    <div class="flex items-center space-x-2">
+      <span class="text-base">⚡</span>
+      <span>Want to test immediately with pre-configured contracts, PDF attachments, and cancellation traps?</span>
+    </div>
+    <a href="/api/admin/seed-sample-workspaces" class="font-bold underline text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 shrink-0">
+      Load Sample Workspaces &rarr;
+    </a>
+  </div>
+
   <form method="POST" action="/workspaces/create" class="space-y-8">
 
     <!-- 1. Workspace Details & Email Scoping -->

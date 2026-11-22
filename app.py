@@ -50,6 +50,7 @@ from db import (
     get_user_profile,
     save_user_profile,
     update_workspace,
+    seed_sample_workspaces_and_contracts,
 )
 from parser import parse_inbound_email
 from extractor import extract_contract_from_text, ContractExtractionResult
@@ -352,11 +353,11 @@ def auth_login():
         session["user_name"] = profile.get("full_name") or email.split("@")[0]
         session["full_name"] = profile.get("full_name")
 
-        # Check existing workspaces; if none, redirect user to create their first workspace
+        # Check existing workspaces; if none, auto-seed sample workspaces so user can test immediately
         workspaces = get_user_workspaces(email)
         if not workspaces:
-            flash(f"Signed in as {email}. Please create your first workspace to start monitoring contracts.", "info")
-            return redirect(url_for("onboarding", vertical=vertical_id))
+            seed_sample_workspaces_and_contracts(email)
+            workspaces = get_user_workspaces(email)
 
         flash(f"Signed in successfully as {email}.", "success")
         return redirect(url_for("dashboard"))
@@ -408,8 +409,8 @@ def auth_google():
 
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
-        flash(f"Signed in with Google as {mock_email}. Please create your first workspace.", "info")
-        return redirect(url_for("onboarding", vertical=vertical_id))
+        seed_sample_workspaces_and_contracts(mock_email)
+        workspaces = get_user_workspaces(mock_email)
     flash(f"Signed in with Google as {mock_email}.", "success")
     return redirect(url_for("dashboard"))
 
@@ -452,8 +453,8 @@ def auth_microsoft():
 
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
-        flash(f"Signed in with Microsoft as {mock_email}. Please create your first workspace.", "info")
-        return redirect(url_for("onboarding", vertical=vertical_id))
+        seed_sample_workspaces_and_contracts(mock_email)
+        workspaces = get_user_workspaces(mock_email)
     flash(f"Signed in with Microsoft as {mock_email}.", "success")
     return redirect(url_for("dashboard"))
 
@@ -483,8 +484,8 @@ def auth_callback(provider: str = "google"):
 
     workspaces = get_user_workspaces(email)
     if not workspaces:
-        flash(f"OAuth connection established for {email}. Please create your first workspace.", "info")
-        return redirect(url_for("onboarding", vertical=vertical_id))
+        seed_sample_workspaces_and_contracts(email)
+        workspaces = get_user_workspaces(email)
 
     flash(f"OAuth connection established for {email}.", "success")
     return redirect(url_for("dashboard"))
@@ -543,10 +544,9 @@ def user_profile():
         if is_setup:
             workspaces = get_user_workspaces(user_email)
             if not workspaces:
-                flash(f"Welcome, {full_name}! Now please set up your first workspace.", "success")
-                return redirect(url_for("onboarding", vertical=vertical_id))
-            flash(f"Welcome, {full_name}!", "success")
-            return redirect(url_for("dashboard"))
+                seed_sample_workspaces_and_contracts(user_email)
+            flash(f"Welcome, {full_name}! Sample workspaces and contracts loaded for testing.", "success")
+            return redirect(url_for("dashboard", workspace_id="ws_apex_property_management"))
 
         flash("Profile updated successfully.", "success")
         return redirect(url_for("user_profile"))
@@ -1204,20 +1204,27 @@ def admin_reset_data():
     }), 200
 
 
+@app.route("/api/admin/seed-sample-workspaces", methods=["GET", "POST"])
+@app.route("/api/sample-data/seed", methods=["GET", "POST"])
 @app.route("/api/admin/seed-apex-contracts", methods=["GET", "POST"])
-def admin_seed_apex_contracts():
+def admin_seed_sample_workspaces():
     """
-    Seeds realistic dummy contracts into 'Apex Property Management' in the database.
-    Associates the current session user_email or specified email to the workspace.
+    Seeds 3 rich sample workspaces (Apex Property Management, Nexus Cloud & IT, Metro Health)
+    with 12 contracts featuring cancellation procedures, risk flags, and PDF attachments.
+    Associates current user or specified email so they appear in workspace switcher.
     """
-    from db import seed_apex_property_management_contracts
-    user_email = session.get("user_email") or request.args.get("email")
-    result = seed_apex_property_management_contracts(user_email=user_email)
-    return jsonify({
-        "status": "success",
-        "message": f"Successfully seeded {result['count']} contracts in '{result['workspace_name']}'.",
-        "data": result,
-    }), 200
+    user_email = session.get("user_email") or request.args.get("email") or "user@workspace.com"
+    result = seed_sample_workspaces_and_contracts(user_email=user_email)
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully seeded {result['total_contracts']} contracts across {result['workspaces_count']} workspaces.",
+            "data": result,
+        }), 200
+
+    flash(f"Loaded {result['workspaces_count']} sample workspaces with {result['total_contracts']} contracts and PDF attachments!", "success")
+    return redirect(url_for("dashboard", workspace_id="ws_apex_property_management"))
 
 
 if __name__ == "__main__":

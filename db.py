@@ -1350,35 +1350,314 @@ def reset_database_data(preserve_demo_seed: bool = False) -> Dict[str, Any]:
 
 
 def seed_apex_property_management_contracts(user_email: Optional[str] = None) -> Dict[str, Any]:
+    """Backward compatibility alias for seed_sample_workspaces_and_contracts."""
+    return seed_sample_workspaces_and_contracts(user_email=user_email)
+
+
+def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Dict[str, Any]:
     """
-    Creates or updates 'Apex Property Management' workspace and seeds realistic dummy contracts
-    tailored to the Property Management vertical (elevator maintenance, waste hauling, HVAC,
-    commercial landscaping/snow removal, and fire alarm monitoring).
-    Associates user_email and any existing workspace members to ensure access.
+    Creates or updates 3 diverse sample workspaces with 12 realistic sample contracts:
+      1. Apex Property Management (Property Management) - 5 contracts
+      2. Nexus Cloud & IT Solutions (MSPs & IT Agencies) - 4 contracts
+      3. Metro Health Medical & Dental (Dental & Medical Clinics) - 3 contracts
+    
+    Each contract includes:
+      - Realistic cancellation deadlines (critical, warning, and normal)
+      - Detailed 'how_to_change_summary' with cancellation procedures, certified mail requirements, and contact emails
+      - 'attachment_filename' (PDF) viewable in the browser
+      - Key risk flags and source quotes
+    
+    Associates user_email, standard test accounts, and existing members with all sample workspaces.
     """
     import hashlib
     today = date.today()
 
+    workspaces_to_seed = [
+        {
+            "id": "ws_apex_property_management",
+            "name": "Apex Property Management",
+            "vertical_id": "property_mgmt",
+            "default_notice_period_days": 45,
+            "inbound_email_slug": "apex-property-management",
+            "contracts": [
+                {
+                    "vendor_name": "Schindler Elevator Corporation",
+                    "contract_title": "Elevator Preventive Maintenance & Safety Inspection",
+                    "category": "Elevator & Fire Safety",
+                    "status": "active",
+                    "notice_period_days": 60,
+                    "expiration_or_renewal_date": today + timedelta(days=68),
+                    "calculated_cancellation_deadline": today + timedelta(days=8),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 18600.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Annual 5.0% price escalator or CPI, applied automatically upon anniversary date.",
+                    "how_to_change_summary": "Changes, scope reductions, or contract termination require written notice submitted via certified mail (return receipt requested) to Schindler Elevator Corp, Attn: Regional Contract Administration, 20 Whippany Rd, Morristown, NJ 07960, exactly 60 days prior to contract anniversary date.",
+                    "attachment_filename": "Schindler_Elevator_Service_Agreement_2026.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=90),
+                    "key_risk_flags": ["Certified mail required for cancellation", "60-day strict notice window", "5% annual compound escalator"],
+                    "source_evidence_quote": "This Agreement shall automatically renew for successive one (1) year terms unless either party gives written notice of non-renewal by certified mail at least sixty (60) days prior to the expiration date.",
+                    "confidence_score": 0.980,
+                    "sender_email": "renewals@schindler-us.com",
+                    "email_subject": "Schindler Elevator Agreement #ELEV-7821-PM - Renewal Notice",
+                },
+                {
+                    "vendor_name": "Waste Management Inc",
+                    "contract_title": "Commercial Compactor & Solid Waste Hauling Agreement",
+                    "category": "Waste & Recycling",
+                    "status": "needs_review",
+                    "notice_period_days": 90,
+                    "expiration_or_renewal_date": today + timedelta(days=125),
+                    "calculated_cancellation_deadline": today + timedelta(days=35),
+                    "auto_renewal_term_months": 36,
+                    "annual_spend_estimate": 28400.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Uncapped quarterly fuel surcharge and environmental regulatory recovery fee adjustments.",
+                    "how_to_change_summary": "To cancel or renegotiate pickup frequency, written notification must be transmitted via certified mail to Waste Management Contract Services (Attn: Commercial Accounts) at least 90 days before the 36-month term expiration. Surcharges cannot be modified mid-term without a formal addendum signed by VP of Commercial Ops.",
+                    "attachment_filename": "WM_Commercial_Waste_Compactor_Agreement.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=15),
+                    "key_risk_flags": ["36-month evergreen lock-in trap", "90-day certified mail notice required", "Uncapped fuel surcharges", "Expiring COI within 15 days"],
+                    "source_evidence_quote": "Customer agrees that unless written notice of cancellation is received via certified mail at least 90 days prior to expiration, this agreement auto-renews for an additional 36-month term.",
+                    "confidence_score": 0.965,
+                    "sender_email": "contracts@wm.com",
+                    "email_subject": "Commercial Waste Service Agreement #WM-90241 - Terms & Rate Schedule",
+                },
+                {
+                    "vendor_name": "Trane Commercial Systems",
+                    "contract_title": "HVAC Chillers & Rooftop Package Maintenance",
+                    "category": "HVAC & Mechanical",
+                    "status": "active",
+                    "notice_period_days": 30,
+                    "expiration_or_renewal_date": today + timedelta(days=80),
+                    "calculated_cancellation_deadline": today + timedelta(days=50),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 21500.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Annual rate adjustment pegged to CPI, capped at maximum 3.5% annually.",
+                    "how_to_change_summary": "Service frequency adjustments, equipment additions/removals, or notice of termination must be sent in writing 30 days prior to annual renewal to service@tranecommercial.com or submitted through the Trane Connect portal referencing Agreement #TR-4402.",
+                    "attachment_filename": "Trane_HVAC_Chiller_Service_Plan.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=180),
+                    "key_risk_flags": ["30-day notice cutoff", "After-hours emergency labor surcharges"],
+                    "source_evidence_quote": "Preventive HVAC maintenance services renew annually unless written notice of termination is provided 30 days prior to expiration.",
+                    "confidence_score": 0.970,
+                    "sender_email": "service@tranecommercial.com",
+                    "email_subject": "Trane Comprehensive HVAC Service Agreement #TR-4402",
+                },
+                {
+                    "vendor_name": "BrightView Commercial Landscapes",
+                    "contract_title": "Grounds Maintenance & Seasonal Snow Removal Services",
+                    "category": "Landscaping & Snow Removal",
+                    "status": "active",
+                    "notice_period_days": 45,
+                    "expiration_or_renewal_date": today + timedelta(days=105),
+                    "calculated_cancellation_deadline": today + timedelta(days=60),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 15200.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Fixed seasonal rate; salt, calcium chloride, and emergency push events billed separately per incident.",
+                    "how_to_change_summary": "Winter storm response thresholds and seasonal turf care amendments must be agreed upon in writing by November 1st. Non-renewal requires 45 days written notice directed to commercial@brightview.com.",
+                    "attachment_filename": "BrightView_Grounds_Snow_Service_Contract.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=40),
+                    "key_risk_flags": ["Seasonal snow removal clause", "45-day cancellation notice"],
+                    "source_evidence_quote": "Agreement auto-renews for successive 1-year terms unless either party gives written notice 45 days prior to November 30.",
+                    "confidence_score": 0.950,
+                    "sender_email": "commercial@brightview.com",
+                    "email_subject": "BrightView Landscape & Snow Agreement #BV-1108",
+                },
+                {
+                    "vendor_name": "Johnson Controls Life Safety",
+                    "contract_title": "Fire Alarm Central Monitoring & Sprinkler Flow Testing",
+                    "category": "Elevator & Fire Safety",
+                    "status": "active",
+                    "notice_period_days": 60,
+                    "expiration_or_renewal_date": today + timedelta(days=180),
+                    "calculated_cancellation_deadline": today + timedelta(days=120),
+                    "auto_renewal_term_months": 24,
+                    "annual_spend_estimate": 8900.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "4.0% annual compounding rate adjustment on monitoring fees.",
+                    "how_to_change_summary": "Emergency contact list updates, inspection rescheduling, or cancellation requests require 60 days advance written notice to lifesafety@jci.com. System disconnection requires local Fire Marshal sign-off certification.",
+                    "attachment_filename": "JohnsonControls_Fire_Alarm_Monitoring_Agreement.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=240),
+                    "key_risk_flags": ["24-month multi-year rollover", "Municipal fire code compliance requirement"],
+                    "source_evidence_quote": "Central station monitoring and life-safety inspection shall renew for additional 24-month periods unless terminated 60 days before contract anniversary.",
+                    "confidence_score": 0.975,
+                    "sender_email": "lifesafety@jci.com",
+                    "email_subject": "Johnson Controls Central Monitoring Agreement #JCI-88301",
+                },
+            ],
+        },
+        {
+            "id": "ws_nexus_it_solutions",
+            "name": "Nexus Cloud & IT Solutions",
+            "vertical_id": "msp_it",
+            "default_notice_period_days": 60,
+            "inbound_email_slug": "nexus-cloud-it-solutions",
+            "contracts": [
+                {
+                    "vendor_name": "Datadog Inc",
+                    "contract_title": "Cloud Infrastructure Monitoring & APM Pro Tier",
+                    "category": "Cloud & SaaS Subscriptions",
+                    "status": "active",
+                    "notice_period_days": 60,
+                    "expiration_or_renewal_date": today + timedelta(days=75),
+                    "calculated_cancellation_deadline": today + timedelta(days=15),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 34800.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Commitment level steps up automatically to prior quarter peak usage; uncommitted burst hosts billed at $23/host/mo.",
+                    "how_to_change_summary": "To downgrade host commitment tiers, reduce synthetic test runs, or terminate subscription, written notice must be submitted to enterprise-cancellations@datadoghq.com quoting Organization ID #ORG-99812 exactly 60 days prior to contract anniversary date. Overages accrued prior to cutoff are non-refundable.",
+                    "attachment_filename": "Datadog_Enterprise_Order_Form_2026.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=95),
+                    "key_risk_flags": ["60-day strict notice cutoff", "Automatic commitment tier step-up", "Uncapped overage billing rate"],
+                    "source_evidence_quote": "Unless customer delivers written notice of non-renewal to Datadog at least 60 days before the expiration of the current Order Term, the subscription shall auto-renew at prevailing standard tier pricing.",
+                    "confidence_score": 0.985,
+                    "sender_email": "renewals@datadoghq.com",
+                    "email_subject": "Datadog Order Form #DD-90124 - Annual Subscription Renewal Notice",
+                },
+                {
+                    "vendor_name": "Cisco Meraki Networking",
+                    "contract_title": "Enterprise Cloud-Managed Hardware License & Support",
+                    "category": "Hardware & Infrastructure Leases",
+                    "status": "needs_review",
+                    "notice_period_days": 90,
+                    "expiration_or_renewal_date": today + timedelta(days=95),
+                    "calculated_cancellation_deadline": today + timedelta(days=5),
+                    "auto_renewal_term_months": 36,
+                    "annual_spend_estimate": 19400.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "36-month multi-year rollover with 6% hardware support cost escalator.",
+                    "how_to_change_summary": "Meraki licenses operate under a strict co-termination architecture. To cancel or return hardware without automatic multi-year rollover, customer must file an official RMA and non-renewal notice through Cisco Commerce Workspace 90 days in advance. Failure to notify results in 36-month auto-lock; lapsed licenses cause hardware to cease passing network traffic.",
+                    "attachment_filename": "Cisco_Meraki_Enterprise_License_Schedule.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=30),
+                    "key_risk_flags": ["Co-termination shutdown trap: hardware stops routing if unrenewed", "90-day cancellation deadline (5 days left!)", "36-month multi-year auto-rollover"],
+                    "source_evidence_quote": "All hardware licenses share a single co-termination expiration date. Non-renewal notice must be received 90 days prior to co-term date or services renew for 36 months.",
+                    "confidence_score": 0.940,
+                    "sender_email": "orders@meraki.cisco.com",
+                    "email_subject": "URGENT: Cisco Meraki Organization License Co-Term Notice #MK-8819",
+                },
+                {
+                    "vendor_name": "CrowdStrike Inc",
+                    "contract_title": "Falcon Complete Managed Detection & Response (MDR)",
+                    "category": "Cybersecurity & Compliance",
+                    "status": "active",
+                    "notice_period_days": 45,
+                    "expiration_or_renewal_date": today + timedelta(days=110),
+                    "calculated_cancellation_deadline": today + timedelta(days=65),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 42000.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Fixed annual rate per protected sensor; additional endpoints added during term coterminate at $185/endpoint/yr.",
+                    "how_to_change_summary": "Sensor count reductions, scope amendments, or non-renewal notifications must be initiated via the CrowdStrike Customer Portal under Licensing > Contract Options or submitted in writing to legal@crowdstrike.com 45 days prior to contract end. A certificate of agent de-installation must be provided before final account closing.",
+                    "attachment_filename": "CrowdStrike_Falcon_MDR_Service_Agreement.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=120),
+                    "key_risk_flags": ["45-day written notice required", "Agent decommission audit certificate required upon termination"],
+                    "source_evidence_quote": "Customer may cancel MDR coverage by providing written notice to CrowdStrike not less than forty-five (45) days prior to the expiration of the subscription term.",
+                    "confidence_score": 0.970,
+                    "sender_email": "commercial-renewals@crowdstrike.com",
+                    "email_subject": "CrowdStrike Agreement #CS-MDR-4481 - Annual Renewal Schedule",
+                },
+                {
+                    "vendor_name": "Microsoft Corporation",
+                    "contract_title": "Microsoft 365 E5 & Azure Reserved Instances Commitment",
+                    "category": "Cloud & SaaS Subscriptions",
+                    "status": "active",
+                    "notice_period_days": 30,
+                    "expiration_or_renewal_date": today + timedelta(days=150),
+                    "calculated_cancellation_deadline": today + timedelta(days=120),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 68500.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Enterprise Agreement true-up locked for current 3-year enrollment cycle; Azure usage above monetary commitment billed monthly at standard EA rates.",
+                    "how_to_change_summary": "Seat count true-downs, M365 edition modifications, or non-renewal declarations must be submitted through your designated Cloud Solution Provider (CSP) or direct via the Microsoft Volume Licensing Service Center (VLSC) exactly 30 days prior to agreement anniversary.",
+                    "attachment_filename": "Microsoft_M365_Enterprise_Agreement_Addendum.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=200),
+                    "key_risk_flags": ["30-day seat reduction cutoff", "Monetary commitment true-up clause"],
+                    "source_evidence_quote": "Annual true-down adjustments and license reductions must be finalized thirty (30) days prior to the Enrollment Anniversary Date.",
+                    "confidence_score": 0.980,
+                    "sender_email": "ea-admin@microsoft.com",
+                    "email_subject": "Microsoft Enterprise Agreement #EA-77192 - Annual True-Up Schedule",
+                },
+            ],
+        },
+        {
+            "id": "ws_metro_health_clinic",
+            "name": "Metro Health Medical & Dental",
+            "vertical_id": "dental_medical",
+            "default_notice_period_days": 30,
+            "inbound_email_slug": "metro-health-medical-dental",
+            "contracts": [
+                {
+                    "vendor_name": "Stericycle Environmental Solutions",
+                    "contract_title": "Regulated Medical Waste & Sharps Disposal Agreement",
+                    "category": "Medical Waste & Biohazard Disposal",
+                    "status": "needs_review",
+                    "notice_period_days": 90,
+                    "expiration_or_renewal_date": today + timedelta(days=100),
+                    "calculated_cancellation_deadline": today + timedelta(days=10),
+                    "auto_renewal_term_months": 36,
+                    "annual_spend_estimate": 16800.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Automatic 5.5% annual rate increase plus variable fuel and environmental regulatory recovery fee adjustments.",
+                    "how_to_change_summary": "Cancellation, pickup schedule reductions, or container alterations require written notice sent via certified mail (return receipt requested) to Stericycle Inc, Contract Administration, 28161 N Keith Dr, Lake Forest, IL 60045, at least 90 days before the 3-year term expiration. Early cancellation is subject to liquidated damages equal to 50% of the remaining contract balance.",
+                    "attachment_filename": "Stericycle_Biohazard_Waste_Service_Contract.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=45),
+                    "key_risk_flags": ["36-month evergreen rollover trap", "50% liquidated damages early cancellation penalty", "90-day certified mail notice required (10 days left!)"],
+                    "source_evidence_quote": "This Agreement auto-renews for consecutive 36-month periods unless Customer terminates by certified mail received 90 days before expiration. Early termination penalty applies.",
+                    "confidence_score": 0.965,
+                    "sender_email": "commercial@stericycle.com",
+                    "email_subject": "Stericycle Medical Waste Service Agreement #MW-1092 - Term Expiration Notice",
+                },
+                {
+                    "vendor_name": "Henry Schein Dental Solutions",
+                    "contract_title": "Dental Operatory Equipment Lease & Maintenance Schedule",
+                    "category": "Dental & Medical Equipment Leases",
+                    "status": "active",
+                    "notice_period_days": 30,
+                    "expiration_or_renewal_date": today + timedelta(days=65),
+                    "calculated_cancellation_deadline": today + timedelta(days=35),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 24200.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Fixed lease payments; comprehensive parts coverage included; labor billed at preferred clinic discount rate.",
+                    "how_to_change_summary": "Equipment buyout quote requests, return coordination, or non-renewal notices must be submitted in writing 30 days prior to lease schedule maturity to financialservices@henryschein.com. All returned chairs and delivery units require certified biomedical decontamination documentation signed by clinic director prior to carrier pickup.",
+                    "attachment_filename": "Henry_Schein_Operatory_Equipment_Master_Lease.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=120),
+                    "key_risk_flags": ["Biomedical decontamination certification required upon return", "30-day purchase buyout option deadline"],
+                    "source_evidence_quote": "Lessee must give written notification of intent to purchase, return, or extend lease thirty (30) days prior to the lease schedule maturity date.",
+                    "confidence_score": 0.975,
+                    "sender_email": "leasing@henryschein.com",
+                    "email_subject": "Henry Schein Financial Services Lease Agreement #HS-66210 - End of Term Options",
+                },
+                {
+                    "vendor_name": "Carestream Dental Imaging",
+                    "contract_title": "3D CBCT Scanner Warranty & Software Maintenance Agreement",
+                    "category": "Clinical Software & EHR",
+                    "status": "active",
+                    "notice_period_days": 30,
+                    "expiration_or_renewal_date": today + timedelta(days=85),
+                    "calculated_cancellation_deadline": today + timedelta(days=55),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 11500.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Annual rate adjustment capped at max 3.0% per annum for software updates and sensor recalibration.",
+                    "how_to_change_summary": "Software license modifications, imaging workstation transfers, or warranty termination notices must be transmitted to renewals@carestreamdental.com referencing System Serial #CS-9600-0812. Deactivation becomes effective on the first day of the subsequent billing month.",
+                    "attachment_filename": "Carestream_Dental_CS9600_Service_Agreement.pdf",
+                    "coi_or_compliance_expiry": today + timedelta(days=180),
+                    "key_risk_flags": ["Proprietary DICOM PACS export dependency", "30-day notice window"],
+                    "source_evidence_quote": "Imaging software maintenance automatically extends on an annual basis unless cancelled in writing thirty (30) days prior to renewal.",
+                    "confidence_score": 0.980,
+                    "sender_email": "cs-contracts@carestreamdental.com",
+                    "email_subject": "Carestream Dental CS 9600 Maintenance Contract #CD-3391 - Renewal Schedule",
+                },
+            ],
+        },
+    ]
+
+    total_inserted = 0
+    seeded_summary = []
+
     with engine.begin() as conn:
-        # 1. Find or create Apex Property Management workspace
-        existing = conn.execute(
-            text("SELECT id, name, vertical_id FROM workspaces WHERE LOWER(name) LIKE '%apex property management%' OR id = 'ws_apex_property_management' LIMIT 1")
-        ).mappings().first()
-
-        if existing:
-            ws_id = existing["id"]
-            conn.execute(
-                text("UPDATE workspaces SET name = 'Apex Property Management', vertical_id = 'property_mgmt', default_notice_period_days = 45 WHERE id = :id"),
-                {"id": ws_id}
-            )
-        else:
-            ws_id = "ws_apex_property_management"
-            conn.execute(
-                text("INSERT INTO workspaces (id, name, vertical_id, default_notice_period_days, inbound_email_slug) VALUES (:id, 'Apex Property Management', 'property_mgmt', 45, 'apex-property-management')"),
-                {"id": ws_id}
-            )
-
-        # 2. Add members: user_email, and all distinct emails currently in workspace_members
         emails_to_add = set()
         if user_email and user_email.strip():
             emails_to_add.add(user_email.strip().lower())
@@ -1390,197 +1669,117 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
 
         emails_to_add.add("admin@contractwatchdog.com")
         emails_to_add.add("demo@contractwatchdog.com")
+        emails_to_add.add("user@workspace.com")
+        emails_to_add.add("user@enterprise.onmicrosoft.com")
 
-        for em in emails_to_add:
-            conn.execute(
-                text("INSERT INTO workspace_members (workspace_id, email, role) VALUES (:ws_id, :email, 'owner') ON DUPLICATE KEY UPDATE role = 'owner'"),
-                {"ws_id": ws_id, "email": em}
-            )
-
-        # 3. Define the dummy contracts
-        contracts_data = [
-            {
-                "vendor_name": "Schindler Elevator Corporation",
-                "contract_title": "Elevator Preventive Maintenance & Safety Inspection",
-                "category": "Elevator & Fire Safety",
-                "status": "active",
-                "notice_period_days": 60,
-                "expiration_or_renewal_date": today + timedelta(days=68),
-                "calculated_cancellation_deadline": today + timedelta(days=8),
-                "auto_renewal_term_months": 12,
-                "annual_spend_estimate": 18600.00,
-                "currency": "USD",
-                "price_escalation_summary": "Annual 5.0% price escalator or CPI, applied automatically upon anniversary date.",
-                "how_to_change_summary": "Changes, scope reductions, or contract termination require written notice submitted via certified mail (return receipt requested) to Schindler Elevator Corp, Attn: Regional Contract Administration, 20 Whippany Rd, Morristown, NJ 07960, exactly 60 days prior to contract anniversary date.",
-                "attachment_filename": "Schindler_Elevator_Service_Agreement_2026.pdf",
-                "coi_or_compliance_expiry": today + timedelta(days=90),
-                "key_risk_flags": ["Certified mail required for cancellation", "60-day strict notice window", "5% annual compound escalator"],
-                "source_evidence_quote": "This Agreement shall automatically renew for successive one (1) year terms unless either party gives written notice of non-renewal by certified mail at least sixty (60) days prior to the expiration date.",
-                "confidence_score": 0.980,
-                "sender_email": "renewals@schindler-us.com",
-                "email_subject": "Schindler Elevator Agreement #ELEV-7821-PM - Renewal Notice",
-            },
-            {
-                "vendor_name": "Waste Management Inc",
-                "contract_title": "Commercial Compactor & Solid Waste Hauling Agreement",
-                "category": "Waste & Recycling",
-                "status": "needs_review",
-                "notice_period_days": 90,
-                "expiration_or_renewal_date": today + timedelta(days=125),
-                "calculated_cancellation_deadline": today + timedelta(days=35),
-                "auto_renewal_term_months": 36,
-                "annual_spend_estimate": 28400.00,
-                "currency": "USD",
-                "price_escalation_summary": "Uncapped quarterly fuel surcharge and environmental regulatory recovery fee adjustments.",
-                "how_to_change_summary": "To cancel or renegotiate pickup frequency, written notification must be transmitted via certified mail to Waste Management Contract Services (Attn: Commercial Accounts) at least 90 days before the 36-month term expiration. Surcharges cannot be modified mid-term without a formal addendum signed by VP of Commercial Ops.",
-                "attachment_filename": "WM_Commercial_Waste_Compactor_Agreement.pdf",
-                "coi_or_compliance_expiry": today + timedelta(days=15),
-                "key_risk_flags": ["36-month evergreen lock-in trap", "90-day certified mail notice required", "Uncapped fuel surcharges", "Expiring COI within 15 days"],
-                "source_evidence_quote": "Customer agrees that unless written notice of cancellation is received via certified mail at least 90 days prior to expiration, this agreement auto-renews for an additional 36-month term.",
-                "confidence_score": 0.965,
-                "sender_email": "contracts@wm.com",
-                "email_subject": "Commercial Waste Service Agreement #WM-90241 - Terms & Rate Schedule",
-            },
-            {
-                "vendor_name": "Trane Commercial Systems",
-                "contract_title": "HVAC Chillers & Rooftop Package Maintenance",
-                "category": "HVAC & Mechanical",
-                "status": "active",
-                "notice_period_days": 30,
-                "expiration_or_renewal_date": today + timedelta(days=80),
-                "calculated_cancellation_deadline": today + timedelta(days=50),
-                "auto_renewal_term_months": 12,
-                "annual_spend_estimate": 21500.00,
-                "currency": "USD",
-                "price_escalation_summary": "Annual rate adjustment pegged to CPI, capped at maximum 3.5% annually.",
-                "how_to_change_summary": "Service frequency adjustments, equipment additions/removals, or notice of termination must be sent in writing 30 days prior to annual renewal to service@tranecommercial.com or submitted through the Trane Connect portal referencing Agreement #TR-4402.",
-                "attachment_filename": "Trane_HVAC_Chiller_Service_Plan.pdf",
-                "coi_or_compliance_expiry": today + timedelta(days=180),
-                "key_risk_flags": ["30-day notice cutoff", "After-hours emergency labor surcharges"],
-                "source_evidence_quote": "Preventive HVAC maintenance services renew annually unless written notice of termination is provided 30 days prior to expiration.",
-                "confidence_score": 0.990,
-                "sender_email": "service@tranecommercial.com",
-                "email_subject": "Trane Comprehensive HVAC Service Agreement #TR-4402",
-            },
-            {
-                "vendor_name": "BrightView Commercial Landscapes",
-                "contract_title": "Grounds Maintenance & Seasonal Snow Removal Services",
-                "category": "Landscaping & Snow Removal",
-                "status": "active",
-                "notice_period_days": 45,
-                "expiration_or_renewal_date": today + timedelta(days=105),
-                "calculated_cancellation_deadline": today + timedelta(days=60),
-                "auto_renewal_term_months": 12,
-                "annual_spend_estimate": 15200.00,
-                "currency": "USD",
-                "price_escalation_summary": "Fixed seasonal rate; salt, calcium chloride, and emergency push events billed separately per incident.",
-                "how_to_change_summary": "Winter storm response thresholds and seasonal turf care amendments must be agreed upon in writing by November 1st. Non-renewal requires 45 days written notice directed to commercial@brightview.com.",
-                "attachment_filename": "BrightView_Grounds_Snow_Service_Contract.pdf",
-                "coi_or_compliance_expiry": today + timedelta(days=40),
-                "key_risk_flags": ["Seasonal snow removal clause", "45-day cancellation notice"],
-                "source_evidence_quote": "Agreement auto-renews for successive 1-year terms unless either party gives written notice 45 days prior to November 30.",
-                "confidence_score": 0.950,
-                "sender_email": "commercial@brightview.com",
-                "email_subject": "BrightView Landscape & Snow Agreement #BV-1108",
-            },
-            {
-                "vendor_name": "Johnson Controls Life Safety",
-                "contract_title": "Fire Alarm Central Monitoring & Sprinkler Flow Testing",
-                "category": "Elevator & Fire Safety",
-                "status": "active",
-                "notice_period_days": 60,
-                "expiration_or_renewal_date": today + timedelta(days=180),
-                "calculated_cancellation_deadline": today + timedelta(days=120),
-                "auto_renewal_term_months": 24,
-                "annual_spend_estimate": 8900.00,
-                "currency": "USD",
-                "price_escalation_summary": "4.0% annual compounding rate adjustment on monitoring fees.",
-                "how_to_change_summary": "Emergency contact list updates, inspection rescheduling, or cancellation requests require 60 days advance written notice to lifesafety@jci.com. System disconnection requires local Fire Marshal sign-off certification.",
-                "attachment_filename": "JohnsonControls_Fire_Alarm_Monitoring_Agreement.pdf",
-                "coi_or_compliance_expiry": today + timedelta(days=240),
-                "key_risk_flags": ["24-month multi-year rollover", "Municipal fire code compliance requirement"],
-                "source_evidence_quote": "Central station monitoring and life-safety inspection shall renew for additional 24-month periods unless terminated 60 days before contract anniversary.",
-                "confidence_score": 0.975,
-                "sender_email": "lifesafety@jci.com",
-                "email_subject": "Johnson Controls Central Monitoring Agreement #JCI-88301",
-            },
-        ]
-
-        # 4. Insert contracts
-        inserted_contracts = []
-        for c in contracts_data:
-            fp_raw = f"{ws_id}_{c['vendor_name']}_{c['expiration_or_renewal_date'].isoformat()}"
-            fp_hash = hashlib.sha256(fp_raw.encode("utf-8")).hexdigest()[:32]
-
-            insert_sql = text("""
-                INSERT INTO contracts (
-                    workspace_id, fingerprint_hash, status, vendor_name, contract_title,
-                    category, expiration_or_renewal_date, notice_period_days,
-                    calculated_cancellation_deadline, auto_renewal_term_months,
-                    annual_spend_estimate, currency, price_escalation_summary,
-                    how_to_change_summary, attachment_filename,
-                    coi_or_compliance_expiry, key_risk_flags, source_evidence_quote,
-                    confidence_score, is_valid_contract_or_renewal, sender_email,
-                    email_subject, raw_content
-                ) VALUES (
-                    :workspace_id, :fingerprint_hash, :status, :vendor_name, :contract_title,
-                    :category, :expiration_or_renewal_date, :notice_period_days,
-                    :calculated_cancellation_deadline, :auto_renewal_term_months,
-                    :annual_spend_estimate, :currency, :price_escalation_summary,
-                    :how_to_change_summary, :attachment_filename,
-                    :coi_or_compliance_expiry, :key_risk_flags, :source_evidence_quote,
-                    :confidence_score, 1, :sender_email,
-                    :email_subject, :raw_content
-                )
+        for ws in workspaces_to_seed:
+            ws_id = ws["id"]
+            conn.execute(text("""
+                INSERT INTO workspaces (id, name, vertical_id, default_notice_period_days, inbound_email_slug)
+                VALUES (:id, :name, :vertical_id, :default_notice_period_days, :slug)
                 ON DUPLICATE KEY UPDATE
-                    status = VALUES(status),
-                    contract_title = VALUES(contract_title),
-                    category = VALUES(category),
-                    expiration_or_renewal_date = VALUES(expiration_or_renewal_date),
-                    notice_period_days = VALUES(notice_period_days),
-                    calculated_cancellation_deadline = VALUES(calculated_cancellation_deadline),
-                    auto_renewal_term_months = VALUES(auto_renewal_term_months),
-                    annual_spend_estimate = VALUES(annual_spend_estimate),
-                    price_escalation_summary = VALUES(price_escalation_summary),
-                    how_to_change_summary = VALUES(how_to_change_summary),
-                    attachment_filename = VALUES(attachment_filename),
-                    coi_or_compliance_expiry = VALUES(coi_or_compliance_expiry),
-                    key_risk_flags = VALUES(key_risk_flags),
-                    source_evidence_quote = VALUES(source_evidence_quote),
+                    name = VALUES(name),
+                    vertical_id = VALUES(vertical_id),
+                    default_notice_period_days = VALUES(default_notice_period_days),
                     updated_at = CURRENT_TIMESTAMP
-            """)
-
-            conn.execute(insert_sql, {
-                "workspace_id": ws_id,
-                "fingerprint_hash": fp_hash,
-                "status": c["status"],
-                "vendor_name": c["vendor_name"],
-                "contract_title": c["contract_title"],
-                "category": c["category"],
-                "expiration_or_renewal_date": c["expiration_or_renewal_date"].isoformat(),
-                "notice_period_days": c["notice_period_days"],
-                "calculated_cancellation_deadline": c["calculated_cancellation_deadline"].isoformat(),
-                "auto_renewal_term_months": c["auto_renewal_term_months"],
-                "annual_spend_estimate": c["annual_spend_estimate"],
-                "currency": c["currency"],
-                "price_escalation_summary": c["price_escalation_summary"],
-                "how_to_change_summary": c["how_to_change_summary"],
-                "attachment_filename": c["attachment_filename"],
-                "coi_or_compliance_expiry": c["coi_or_compliance_expiry"].isoformat(),
-                "key_risk_flags": json.dumps(c["key_risk_flags"]),
-                "source_evidence_quote": c["source_evidence_quote"],
-                "confidence_score": c["confidence_score"],
-                "sender_email": c["sender_email"],
-                "email_subject": c["email_subject"],
-                "raw_content": f"Dummy contract content for {c['vendor_name']} - {c['contract_title']}",
+            """), {
+                "id": ws_id,
+                "name": ws["name"],
+                "vertical_id": ws["vertical_id"],
+                "default_notice_period_days": ws["default_notice_period_days"],
+                "slug": ws["inbound_email_slug"],
             })
-            inserted_contracts.append(c["vendor_name"])
 
+            for em in emails_to_add:
+                conn.execute(text("""
+                    INSERT INTO workspace_members (workspace_id, email, role)
+                    VALUES (:ws_id, :email, 'owner')
+                    ON DUPLICATE KEY UPDATE role = 'owner'
+                """), {"ws_id": ws_id, "email": em})
+
+            contracts_seeded = []
+            for c in ws["contracts"]:
+                fp_raw = f"{ws_id}_{c['vendor_name']}_{c['expiration_or_renewal_date'].isoformat()}"
+                fp_hash = hashlib.sha256(fp_raw.encode("utf-8")).hexdigest()[:32]
+
+                insert_sql = text("""
+                    INSERT INTO contracts (
+                        workspace_id, fingerprint_hash, status, vendor_name, contract_title,
+                        category, expiration_or_renewal_date, notice_period_days,
+                        calculated_cancellation_deadline, auto_renewal_term_months,
+                        annual_spend_estimate, currency, price_escalation_summary,
+                        how_to_change_summary, attachment_filename,
+                        coi_or_compliance_expiry, key_risk_flags, source_evidence_quote,
+                        confidence_score, is_valid_contract_or_renewal, sender_email,
+                        email_subject, raw_content
+                    ) VALUES (
+                        :workspace_id, :fingerprint_hash, :status, :vendor_name, :contract_title,
+                        :category, :expiration_or_renewal_date, :notice_period_days,
+                        :calculated_cancellation_deadline, :auto_renewal_term_months,
+                        :annual_spend_estimate, :currency, :price_escalation_summary,
+                        :how_to_change_summary, :attachment_filename,
+                        :coi_or_compliance_expiry, :key_risk_flags, :source_evidence_quote,
+                        :confidence_score, 1, :sender_email,
+                        :email_subject, :raw_content
+                    )
+                    ON DUPLICATE KEY UPDATE
+                        status = VALUES(status),
+                        contract_title = VALUES(contract_title),
+                        category = VALUES(category),
+                        expiration_or_renewal_date = VALUES(expiration_or_renewal_date),
+                        notice_period_days = VALUES(notice_period_days),
+                        calculated_cancellation_deadline = VALUES(calculated_cancellation_deadline),
+                        auto_renewal_term_months = VALUES(auto_renewal_term_months),
+                        annual_spend_estimate = VALUES(annual_spend_estimate),
+                        price_escalation_summary = VALUES(price_escalation_summary),
+                        how_to_change_summary = VALUES(how_to_change_summary),
+                        attachment_filename = VALUES(attachment_filename),
+                        coi_or_compliance_expiry = VALUES(coi_or_compliance_expiry),
+                        key_risk_flags = VALUES(key_risk_flags),
+                        source_evidence_quote = VALUES(source_evidence_quote),
+                        updated_at = CURRENT_TIMESTAMP
+                """)
+
+                conn.execute(insert_sql, {
+                    "workspace_id": ws_id,
+                    "fingerprint_hash": fp_hash,
+                    "status": c["status"],
+                    "vendor_name": c["vendor_name"],
+                    "contract_title": c["contract_title"],
+                    "category": c["category"],
+                    "expiration_or_renewal_date": c["expiration_or_renewal_date"].isoformat(),
+                    "notice_period_days": c["notice_period_days"],
+                    "calculated_cancellation_deadline": c["calculated_cancellation_deadline"].isoformat(),
+                    "auto_renewal_term_months": c["auto_renewal_term_months"],
+                    "annual_spend_estimate": c["annual_spend_estimate"],
+                    "currency": c["currency"],
+                    "price_escalation_summary": c["price_escalation_summary"],
+                    "how_to_change_summary": c["how_to_change_summary"],
+                    "attachment_filename": c["attachment_filename"],
+                    "coi_or_compliance_expiry": c["coi_or_compliance_expiry"].isoformat(),
+                    "key_risk_flags": json.dumps(c["key_risk_flags"]),
+                    "source_evidence_quote": c["source_evidence_quote"],
+                    "confidence_score": c["confidence_score"],
+                    "sender_email": c["sender_email"],
+                    "email_subject": c["email_subject"],
+                    "raw_content": f"Executed agreement record for {c['vendor_name']} ({c['contract_title']}). Renewal term: {c['auto_renewal_term_months']} months. Cancellation notice window: {c['notice_period_days']} days prior to deadline.",
+                })
+                contracts_seeded.append(c["vendor_name"])
+                total_inserted += 1
+
+            seeded_summary.append({
+                "workspace_id": ws_id,
+                "workspace_name": ws["name"],
+                "vertical_id": ws["vertical_id"],
+                "contracts_count": len(contracts_seeded),
+                "contracts": contracts_seeded,
+            })
+
+    logger.info(f"Seeded {total_inserted} sample contracts across {len(workspaces_to_seed)} workspaces for emails: {emails_to_add}")
     return {
-        "workspace_id": ws_id,
-        "workspace_name": "Apex Property Management",
-        "vertical_id": "property_mgmt",
+        "workspaces_count": len(workspaces_to_seed),
+        "total_contracts": total_inserted,
+        "workspaces": seeded_summary,
         "associated_emails": list(emails_to_add),
-        "contracts_seeded": inserted_contracts,
-        "count": len(inserted_contracts),
     }
+
