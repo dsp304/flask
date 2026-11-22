@@ -44,7 +44,7 @@ def extract_contract_from_text(raw_text: str, vertical_id: str = "general_b2b") 
     config = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
     
     system_prompt = f"""
-You are an expert B2B contract analyst and procurement risk auditor. Inspect raw email bodies or agreement text and extract structured renewal, cancellation, pricing, and compliance metadata.
+You are an expert B2B contract analyst and procurement risk intelligence assistant. Inspect raw email bodies or agreement text and extract structured renewal, cancellation, pricing, and compliance metadata.
 
 STRICT RULES:
 1. NEVER GUESS DATES: If unstated, set date fields to null and lower confidence_score below 0.65.

@@ -909,7 +909,7 @@ def get_oauth_connection(workspace_id: str, provider: str) -> Optional[Dict[str,
 
 
 # ---------------------------------------------------------------------------
-# Task 6 Alert Audit & Dispatch Database Helpers
+# Task 6 Alert History & Dispatch Database Helpers
 # ---------------------------------------------------------------------------
 def check_alert_already_sent(contract_id: int, deadline: str, alert_type: str = "deadline_warning") -> bool:
     """
@@ -947,7 +947,7 @@ def record_alert_log(
     recipient_email: Optional[str] = None,
 ) -> bool:
     """
-    Persist dispatched alert to alert_logs for audit tracking and idempotency.
+    Persist dispatched alert to alert_logs for history tracking and idempotency.
     """
     insert_sql = text("""
         INSERT INTO alert_logs (
@@ -1021,7 +1021,7 @@ def get_active_contracts_for_alert_scan(workspace_id: Optional[str] = None) -> L
 
 
 def get_alert_logs(workspace_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
-    """Retrieve audit history of dispatched alerts."""
+    """Retrieve history of dispatched alerts."""
     query_str = """
         SELECT 
             a.*,

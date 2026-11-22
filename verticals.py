@@ -1,6 +1,6 @@
 """
 Vertical Configurations for Contract Renewal Watchdog.
-Contains domain-specific keyword dictionaries, LLM audit guidelines,
+Contains domain-specific keyword dictionaries, LLM review guidelines,
 and tailored landing page configurations for Task 5.
 """
 
@@ -10,7 +10,7 @@ VERTICAL_CONFIGS = {
         "route_path": "/property-management",
         "default_alert_lead_days": 45,
         "headline": "Never Get Trapped in a 36-Month Waste or Elevator Auto-Renewal Again",
-        "subheadline": "Contract intelligence built specifically for commercial and multifamily property managers. Catch hidden 60-day certified mail notice clauses, audit silent CPI escalations, and track expiring vendor COIs automatically.",
+        "subheadline": "Contract intelligence built specifically for commercial and multifamily property managers. Catch hidden 60-day certified mail notice clauses, track silent CPI escalations, and monitor expiring vendor COIs automatically.",
         "roi_hook": "Save $14,000+ per property by catching silent multi-year rollovers on commercial waste hauling, elevator maintenance, and HVAC service agreements.",
         "trust_strip": "Trusted by property management teams overseeing 4.2M+ sq. ft. of commercial & residential real estate.",
         "trust_badges": ["Colliers Alliance", "CBRE Portfolio Compatible", "BOMA Partner", "WasteWise Certified", "COI Tracking Active"],
@@ -63,7 +63,7 @@ INDUSTRY TRAPS TO PRIORITIZE:
         "subheadline": "Automated contract watchdog for dentists, surgeons, and medical practices. Track CBCT imaging systems, autoclave service, EMR subscriptions, and biohazard pickups before strict buyout notice windows close.",
         "roi_hook": "Eliminate $18,500 in unwanted 12-month equipment lease rollovers and avoid predatory practice management termination penalties.",
         "trust_strip": "Safeguarding 250+ private practices, orthodontists, and dental service organizations nationwide.",
-        "trust_badges": ["Henry Schein Audit-Ready", "Patterson Lease Verified", "HIPAA-Safe Architecture", "Biohazard Watchlist", "ADA Vendor Compatible"],
+        "trust_badges": ["Henry Schein Verified", "Patterson Lease Verified", "HIPAA-Safe Architecture", "Biohazard Watchlist", "ADA Vendor Compatible"],
         "cta_text": "Protect Your Practice Now",
         "stat_metric": "$18,500",
         "stat_label": "Avg. Saved Per Equipment Lease Buyout",
@@ -163,7 +163,7 @@ INDUSTRY TRAPS TO PRIORITIZE:
         "roi_hook": "Prevent $24,000 in unexpected forklift month-to-month penalties and keep freight rate tables locked in ahead of expiration.",
         "trust_strip": "Defending 95+ distribution centers, 3PL facilities, and manufacturing plants across North America.",
         "trust_badges": ["WERC Compliant", "OSHA Fleet Safeguard", "SupplyChain 24/7 Verified", "MHI Partner Network", "FreightWatch Active"],
-        "cta_text": "Audit Your Plant Leases Now",
+        "cta_text": "Review Your Plant Leases Now",
         "stat_metric": "$24,000",
         "stat_label": "Avg. Penalty Avoided Per Fleet Renewal",
         "traps_highlighted": [
@@ -212,7 +212,7 @@ INDUSTRY TRAPS TO PRIORITIZE:
         "roi_hook": "The average B2B business saves $32,000 annually by stopping unused software subscriptions and auto-renewing vendor lock-ins.",
         "trust_strip": "Monitoring $48M+ in active vendor spend across 500+ fast-growing organizations.",
         "trust_badges": ["Google Gemini 3.5 AI", "Fernet Token Encryption", "SOC 2 Ready Architecture", "Postmark Direct Integration", "Zero Setup Required"],
-        "cta_text": "Start Free Contract Audit",
+        "cta_text": "Start Free Contract Review",
         "stat_metric": "$32,000",
         "stat_label": "Average Annual Spend Saved",
         "traps_highlighted": [

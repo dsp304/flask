@@ -15,6 +15,17 @@
           <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             {{ current_workspace.name }}
           </h1>
+          {% if all_workspaces and all_workspaces|length > 1 %}
+          <form method="GET" action="/dashboard" class="inline-block">
+            <select name="workspace_id" onchange="this.form.submit()" class="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 dark:text-slate-300 shadow-sm focus:ring-2 focus:ring-indigo-500">
+              {% for ws in all_workspaces %}
+                <option value="{{ ws.id }}" {% if current_workspace and current_workspace.id == ws.id %}selected{% endif %}>
+                  Workspace: {{ ws.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </form>
+          {% endif %}
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
             {{ vertical_info.display_name }}
           </span>
@@ -81,7 +92,7 @@
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
           <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
         </span>
-        <h2 class="text-xl font-bold text-slate-900 dark:text-white">Needs Review (Audit Queue)</h2>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white">Needs Review Queue</h2>
         <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {{ review_contracts|length }} pending
         </span>
@@ -324,7 +335,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white" id="modal-title">Contract Audit & Approval</h3>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white" id="modal-title">Contract Review & Approval</h3>
             <p class="text-xs text-slate-500">Verify extracted terms against source text before activating automatic monitoring</p>
           </div>
         </div>
@@ -334,7 +345,7 @@
       <!-- Side-by-Side Modal Body -->
       <div class="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-h-[75vh] overflow-y-auto">
         
-        <!-- LEFT COLUMN (5 Cols): AI Audit Evidence & Raw Source -->
+        <!-- LEFT COLUMN (5 Cols): AI Analysis Evidence & Raw Source -->
         <div class="lg:col-span-5 space-y-4 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
           <div>
             <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Source Evidence</h4>

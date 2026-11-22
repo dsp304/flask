@@ -72,7 +72,7 @@ def format_search_query_string(keywords: list) -> str:
 
 
 def render_vertical_landing(vertical_id: str):
-    """Render minimalist landing page focused on Verticals, Audit, Demo, and Sign-in."""
+    """Render landing page focused on Verticals, Review, Demo, and Sign-in."""
     if vertical_id not in VERTICAL_CONFIGS:
         vertical_id = "general_b2b"
     vertical = VERTICAL_CONFIGS[vertical_id]
@@ -86,6 +86,7 @@ def render_vertical_landing(vertical_id: str):
         active_nav="landing",
         vertical_id=vertical_id,
         vertical=vertical,
+        all_verticals=VERTICAL_CONFIGS,
         all_workspaces=all_workspaces,
     )
 
@@ -183,7 +184,7 @@ def landing_logistics():
 def auth_login():
     """
     Unified OAuth & Work Email Sign-In Entry Point.
-    Accepts vertical query parameter from 'Start Free Contract Audit' or 'Sign-in'.
+    Accepts vertical query parameter from 'Start Free Contract Review' or 'Sign-in'.
     """
     vertical_id = (request.args.get("vertical") or request.form.get("vertical") or "general_b2b").strip()
     if vertical_id not in VERTICAL_CONFIGS:
@@ -706,7 +707,7 @@ def trigger_alert_scan():
 
 @app.route("/api/alerts/history", methods=["GET"])
 def alert_history():
-    """Retrieve audit trail of dispatched contract cancellation alerts."""
+    """Retrieve history of dispatched contract cancellation alerts."""
     from db import get_alert_logs
     workspace_id = request.args.get("workspace_id")
     limit = int(request.args.get("limit", 50))

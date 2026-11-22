@@ -238,7 +238,7 @@ def run_alert_scan(
             delivered = dispatch_webhook_alert(webhook_url, alert_item)
             alert_item["webhook_delivered"] = delivered
 
-        # Record to database alert_logs for audit tracking and idempotency
+        # Record to database alert_logs for alert history tracking and idempotency
         if not dry_run:
             success = record_alert_log(
                 contract_id=contract_id,
@@ -281,7 +281,7 @@ def main():
     parser.add_argument("--workspace", type=str, default=None, help="Filter to specific workspace_id")
     parser.add_argument("--dry-run", action="store_true", help="Simulate alert scan without recording to alert_logs")
     parser.add_argument("--force", action="store_true", help="Bypass alert_logs deduplication check")
-    parser.add_argument("--summary", action="store_true", help="Print audit summary of historical alerts")
+    parser.add_argument("--summary", action="store_true", help="Print summary of historical alerts")
     parser.add_argument("--webhook", type=str, default=None, help="Override destination webhook URL")
     parser.add_argument("--email", type=str, default=None, help="Notification email address")
 
@@ -289,7 +289,7 @@ def main():
 
     if args.summary:
         logs = get_alert_logs(workspace_id=args.workspace, limit=20)
-        print("\n=== RECENT ALERT AUDIT LOGS ===")
+        print("\n=== RECENT ALERT HISTORY LOGS ===")
         if not logs:
             print("No alert logs found.")
         else:

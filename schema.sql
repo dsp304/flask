@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS oauth_connections (
     INDEX idx_oauth_ws_provider (workspace_id, provider)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Alert Logs table to enforce notification idempotency and audit history
+-- Alert Logs table to enforce notification idempotency and dispatch history
 CREATE TABLE IF NOT EXISTS alert_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     contract_id INT NOT NULL,
