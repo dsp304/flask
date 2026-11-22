@@ -98,12 +98,14 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
 
     current_workspace = get_workspace(workspace_id)
     if not current_workspace:
-        current_workspace = create_workspace(workspace_id, f"Workspace {workspace_id}", "general_b2b")
-        if not any(ws["id"] == workspace_id for ws in user_workspaces):
-            user_workspaces.append(current_workspace)
+        if is_demo or workspace_id == "ws_default":
+            current_workspace = create_workspace("ws_default", "Demo Workspace", "general_b2b")
+        else:
+            abort(404)
 
     vertical_id = current_workspace.get("vertical_id") or "general_b2b"
     vertical_info = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
+    search_query_string = format_search_query_string(vertical_info.get("search_keywords", []))
 
     active_contracts, review_contracts = get_dashboard_contracts(workspace_id)
 
@@ -135,6 +137,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         current_workspace=current_workspace,
         all_workspaces=user_workspaces,
         vertical_info=vertical_info,
+        search_query_string=search_query_string,
         active_contracts=active_contracts,
         review_contracts=review_contracts,
         all_contracts_json=json.dumps(combined_contracts, default=str),
@@ -203,18 +206,13 @@ def auth_login():
         session["user_email"] = email
         logger.info(f"User authenticated with work email: {email}")
 
-        # Check existing workspaces; if none, auto-provision initial workspace
+        # Check existing workspaces; if none, redirect user to create their first workspace
         workspaces = get_user_workspaces(email)
         if not workspaces:
-            username = email.split("@")[0]
-            clean_slug = re.sub(r"[^a-zA-Z0-9]+", "_", username.lower()).strip("_") or "org"
-            new_ws_id = f"ws_{clean_slug}_{int(datetime.now().timestamp()) % 10000}"
-            ws_name = f"{username.title()} Workspace"
-            create_workspace(new_ws_id, ws_name, vertical_id, creator_email=email)
-            flash(f"Welcome to Contract Watchdog! Workspace '{ws_name}' created for {email}.", "success")
-        else:
-            flash(f"Signed in successfully as {email}.", "success")
+            flash(f"Signed in as {email}. Please create your first workspace to start monitoring contracts.", "info")
+            return redirect(url_for("onboarding", vertical=vertical_id))
 
+        flash(f"Signed in successfully as {email}.", "success")
         return redirect(url_for("dashboard"))
 
     return render_template(
@@ -253,12 +251,8 @@ def auth_google():
     session["user_email"] = mock_email
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
-        create_workspace(
-            f"ws_google_{int(datetime.now().timestamp()) % 10000}",
-            "Google Workspace Procurement",
-            vertical_id,
-            creator_email=mock_email,
-        )
+        flash(f"Signed in with Google as {mock_email}. Please create your first workspace.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
     flash(f"Authenticated via Google Workspace as {mock_email}.", "success")
     return redirect(url_for("dashboard"))
 
@@ -290,12 +284,8 @@ def auth_microsoft():
     session["user_email"] = mock_email
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
-        create_workspace(
-            f"ws_m365_{int(datetime.now().timestamp()) % 10000}",
-            "Microsoft 365 Procurement",
-            vertical_id,
-            creator_email=mock_email,
-        )
+        flash(f"Signed in with Microsoft as {mock_email}. Please create your first workspace.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
     flash(f"Authenticated via Microsoft 365 as {mock_email}.", "success")
     return redirect(url_for("dashboard"))
 
@@ -316,12 +306,8 @@ def auth_callback(provider: str = "google"):
 
     workspaces = get_user_workspaces(email)
     if not workspaces:
-        create_workspace(
-            f"ws_{provider}_{int(datetime.now().timestamp()) % 10000}",
-            f"{provider.title()} Workspace",
-            vertical_id,
-            creator_email=email,
-        )
+        flash(f"OAuth connection established for {email}. Please create your first workspace.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
 
     flash(f"OAuth connection established for {email}.", "success")
     return redirect(url_for("dashboard"))
@@ -371,14 +357,11 @@ def dashboard():
     # 3. Retrieve workspaces scoped to this authenticated user
     user_workspaces = get_user_workspaces(user_email)
     if not user_workspaces:
-        # Auto-provision initial workspace if none exist yet
-        username = user_email.split("@")[0]
-        clean_slug = re.sub(r"[^a-zA-Z0-9]+", "_", username.lower()).strip("_") or "org"
-        initial_ws_id = f"ws_{clean_slug}_{int(datetime.now().timestamp()) % 10000}"
-        create_workspace(initial_ws_id, f"{username.title()} Workspace", "general_b2b", creator_email=user_email)
-        user_workspaces = get_user_workspaces(user_email)
+        flash("You do not have any workspaces yet. Create your first workspace to begin monitoring contracts.", "info")
+        return redirect(url_for("onboarding"))
 
     # 4. Resolve requested workspace and enforce access scoping
+    # If no workspace requested, show the first created workspace by default (user_workspaces[0])
     requested_ws_id = request.args.get("workspace_id")
     if requested_ws_id:
         if not can_user_access_workspace(user_email, requested_ws_id):

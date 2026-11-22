@@ -29,7 +29,7 @@
       </div>
       <div>
         <h2 class="text-xl font-bold text-slate-900 dark:text-white">Workspace Created Successfully!</h2>
-        <p class="text-xs text-slate-500">{{ created_workspace.name }} (ID: {{ created_workspace.id }}) is active and listening for contracts.</p>
+        <p class="text-xs text-slate-500">{{ created_workspace.name }} is active and ready to monitor contracts.</p>
       </div>
     </div>
 
@@ -161,20 +161,11 @@
         <span class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">Multi-Email Authorization</span>
       </div>
       
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label for="name" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Company / Workspace Name *
-          </label>
-          <input type="text" id="name" name="name" required placeholder="e.g. Apex Property Management" class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white">
-        </div>
-
-        <div>
-          <label for="workspace_id" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Workspace ID Slug (Optional)
-          </label>
-          <input type="text" id="workspace_id" name="workspace_id" placeholder="e.g. apex_prop (auto-generated if empty)" class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
-        </div>
+      <div>
+        <label for="name" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+          Company / Workspace Name *
+        </label>
+        <input type="text" id="name" name="name" required placeholder="e.g. Apex Property Management" class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white">
       </div>
 
       <!-- Email Scoping Fields (Task 7 Requirement) -->
@@ -224,7 +215,6 @@
               <span class="font-bold text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
                 {{ v_data.display_name }}
               </span>
-              <span class="block text-[11px] font-mono text-slate-400">ID: {{ v_id }}</span>
             </div>
             <input type="radio" name="vertical_id" value="{{ v_id }}" {% if selected_vertical_id and v_id == selected_vertical_id %}checked{% elif not selected_vertical_id and loop.first %}checked{% endif %} class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 mt-1">
           </div>
