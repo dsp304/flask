@@ -838,5 +838,21 @@ def admin_reset_data():
     }), 200
 
 
+@app.route("/api/admin/seed-apex-contracts", methods=["GET", "POST"])
+def admin_seed_apex_contracts():
+    """
+    Seeds realistic dummy contracts into 'Apex Property Management' in the database.
+    Associates the current session user_email or specified email to the workspace.
+    """
+    from db import seed_apex_property_management_contracts
+    user_email = session.get("user_email") or request.args.get("email")
+    result = seed_apex_property_management_contracts(user_email=user_email)
+    return jsonify({
+        "status": "success",
+        "message": f"Successfully seeded {result['count']} contracts in '{result['workspace_name']}'.",
+        "data": result,
+    }), 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)

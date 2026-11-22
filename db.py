@@ -1141,3 +1141,224 @@ def reset_database_data(preserve_demo_seed: bool = False) -> Dict[str, Any]:
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
     logger.info(f"Database reset executed: {counts}")
     return counts
+
+
+def seed_apex_property_management_contracts(user_email: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Creates or updates 'Apex Property Management' workspace and seeds realistic dummy contracts
+    tailored to the Property Management vertical (elevator maintenance, waste hauling, HVAC,
+    commercial landscaping/snow removal, and fire alarm monitoring).
+    Associates user_email and any existing workspace members to ensure access.
+    """
+    import hashlib
+    today = date.today()
+
+    with engine.begin() as conn:
+        # 1. Find or create Apex Property Management workspace
+        existing = conn.execute(
+            text("SELECT id, name, vertical_id FROM workspaces WHERE LOWER(name) LIKE '%apex property management%' OR id = 'ws_apex_property_management' LIMIT 1")
+        ).mappings().first()
+
+        if existing:
+            ws_id = existing["id"]
+            conn.execute(
+                text("UPDATE workspaces SET name = 'Apex Property Management', vertical_id = 'property_mgmt' WHERE id = :id"),
+                {"id": ws_id}
+            )
+        else:
+            ws_id = "ws_apex_property_management"
+            conn.execute(
+                text("INSERT INTO workspaces (id, name, vertical_id, inbound_email_slug) VALUES (:id, 'Apex Property Management', 'property_mgmt', 'apex-property-management')"),
+                {"id": ws_id}
+            )
+
+        # 2. Add members: user_email, and all distinct emails currently in workspace_members
+        emails_to_add = set()
+        if user_email and user_email.strip():
+            emails_to_add.add(user_email.strip().lower())
+
+        member_rows = conn.execute(text("SELECT DISTINCT email FROM workspace_members")).fetchall()
+        for r in member_rows:
+            if r[0] and "@" in r[0]:
+                emails_to_add.add(r[0].strip().lower())
+
+        emails_to_add.add("admin@contractwatchdog.com")
+        emails_to_add.add("demo@contractwatchdog.com")
+
+        for em in emails_to_add:
+            conn.execute(
+                text("INSERT INTO workspace_members (workspace_id, email, role) VALUES (:ws_id, :email, 'owner') ON DUPLICATE KEY UPDATE role = 'owner'"),
+                {"ws_id": ws_id, "email": em}
+            )
+
+        # 3. Define the dummy contracts
+        contracts_data = [
+            {
+                "vendor_name": "Schindler Elevator Corporation",
+                "contract_title": "Elevator Preventive Maintenance & Safety Inspection",
+                "category": "Elevator & Fire Safety",
+                "status": "active",
+                "notice_period_days": 60,
+                "expiration_or_renewal_date": today + timedelta(days=68),
+                "calculated_cancellation_deadline": today + timedelta(days=8),
+                "auto_renewal_term_months": 12,
+                "annual_spend_estimate": 18600.00,
+                "currency": "USD",
+                "price_escalation_summary": "Annual 5.0% price escalator or CPI, applied automatically upon anniversary date.",
+                "coi_or_compliance_expiry": today + timedelta(days=90),
+                "key_risk_flags": ["Certified mail required for cancellation", "60-day strict notice window", "5% annual compound escalator"],
+                "source_evidence_quote": "This Agreement shall automatically renew for successive one (1) year terms unless either party gives written notice of non-renewal by certified mail at least sixty (60) days prior to the expiration date.",
+                "confidence_score": 0.980,
+                "sender_email": "renewals@schindler-us.com",
+                "email_subject": "Schindler Elevator Agreement #ELEV-7821-PM - Renewal Notice",
+            },
+            {
+                "vendor_name": "Waste Management Inc",
+                "contract_title": "Commercial Compactor & Solid Waste Hauling Agreement",
+                "category": "Waste & Recycling",
+                "status": "needs_review",
+                "notice_period_days": 90,
+                "expiration_or_renewal_date": today + timedelta(days=125),
+                "calculated_cancellation_deadline": today + timedelta(days=35),
+                "auto_renewal_term_months": 36,
+                "annual_spend_estimate": 28400.00,
+                "currency": "USD",
+                "price_escalation_summary": "Uncapped quarterly fuel surcharge and environmental regulatory recovery fee adjustments.",
+                "coi_or_compliance_expiry": today + timedelta(days=15),
+                "key_risk_flags": ["36-month evergreen lock-in trap", "90-day certified mail notice required", "Uncapped fuel surcharges", "Expiring COI within 15 days"],
+                "source_evidence_quote": "Customer agrees that unless written notice of cancellation is received via certified mail at least 90 days prior to expiration, this agreement auto-renews for an additional 36-month term.",
+                "confidence_score": 0.965,
+                "sender_email": "contracts@wm.com",
+                "email_subject": "Commercial Waste Service Agreement #WM-90241 - Terms & Rate Schedule",
+            },
+            {
+                "vendor_name": "Trane Commercial Systems",
+                "contract_title": "HVAC Chillers & Rooftop Package Maintenance",
+                "category": "HVAC & Mechanical",
+                "status": "active",
+                "notice_period_days": 30,
+                "expiration_or_renewal_date": today + timedelta(days=80),
+                "calculated_cancellation_deadline": today + timedelta(days=50),
+                "auto_renewal_term_months": 12,
+                "annual_spend_estimate": 21500.00,
+                "currency": "USD",
+                "price_escalation_summary": "Annual rate adjustment pegged to CPI, capped at maximum 3.5% annually.",
+                "coi_or_compliance_expiry": today + timedelta(days=180),
+                "key_risk_flags": ["30-day notice cutoff", "After-hours emergency labor surcharges"],
+                "source_evidence_quote": "Preventive HVAC maintenance services renew annually unless written notice of termination is provided 30 days prior to expiration.",
+                "confidence_score": 0.990,
+                "sender_email": "service@tranecommercial.com",
+                "email_subject": "Trane Comprehensive HVAC Service Agreement #TR-4402",
+            },
+            {
+                "vendor_name": "BrightView Commercial Landscapes",
+                "contract_title": "Grounds Maintenance & Seasonal Snow Removal Services",
+                "category": "Landscaping & Snow Removal",
+                "status": "active",
+                "notice_period_days": 45,
+                "expiration_or_renewal_date": today + timedelta(days=105),
+                "calculated_cancellation_deadline": today + timedelta(days=60),
+                "auto_renewal_term_months": 12,
+                "annual_spend_estimate": 15200.00,
+                "currency": "USD",
+                "price_escalation_summary": "Fixed seasonal rate; salt, calcium chloride, and emergency push events billed separately per incident.",
+                "coi_or_compliance_expiry": today + timedelta(days=40),
+                "key_risk_flags": ["Seasonal snow removal clause", "45-day cancellation notice"],
+                "source_evidence_quote": "Agreement auto-renews for successive 1-year terms unless either party gives written notice 45 days prior to November 30.",
+                "confidence_score": 0.950,
+                "sender_email": "commercial@brightview.com",
+                "email_subject": "BrightView Landscape & Snow Agreement #BV-1108",
+            },
+            {
+                "vendor_name": "Johnson Controls Life Safety",
+                "contract_title": "Fire Alarm Central Monitoring & Sprinkler Flow Testing",
+                "category": "Elevator & Fire Safety",
+                "status": "active",
+                "notice_period_days": 60,
+                "expiration_or_renewal_date": today + timedelta(days=180),
+                "calculated_cancellation_deadline": today + timedelta(days=120),
+                "auto_renewal_term_months": 24,
+                "annual_spend_estimate": 8900.00,
+                "currency": "USD",
+                "price_escalation_summary": "4.0% annual compounding rate adjustment on monitoring fees.",
+                "coi_or_compliance_expiry": today + timedelta(days=240),
+                "key_risk_flags": ["24-month multi-year rollover", "Municipal fire code compliance requirement"],
+                "source_evidence_quote": "Central station monitoring and life-safety inspection shall renew for additional 24-month periods unless terminated 60 days before contract anniversary.",
+                "confidence_score": 0.975,
+                "sender_email": "lifesafety@jci.com",
+                "email_subject": "Johnson Controls Central Monitoring Agreement #JCI-88301",
+            },
+        ]
+
+        # 4. Insert contracts
+        inserted_contracts = []
+        for c in contracts_data:
+            fp_raw = f"{ws_id}_{c['vendor_name']}_{c['expiration_or_renewal_date'].isoformat()}"
+            fp_hash = hashlib.sha256(fp_raw.encode("utf-8")).hexdigest()[:32]
+
+            insert_sql = text("""
+                INSERT INTO contracts (
+                    workspace_id, fingerprint_hash, status, vendor_name, contract_title,
+                    category, expiration_or_renewal_date, notice_period_days,
+                    calculated_cancellation_deadline, auto_renewal_term_months,
+                    annual_spend_estimate, currency, price_escalation_summary,
+                    coi_or_compliance_expiry, key_risk_flags, source_evidence_quote,
+                    confidence_score, is_valid_contract_or_renewal, sender_email,
+                    email_subject, raw_content
+                ) VALUES (
+                    :workspace_id, :fingerprint_hash, :status, :vendor_name, :contract_title,
+                    :category, :expiration_or_renewal_date, :notice_period_days,
+                    :calculated_cancellation_deadline, :auto_renewal_term_months,
+                    :annual_spend_estimate, :currency, :price_escalation_summary,
+                    :coi_or_compliance_expiry, :key_risk_flags, :source_evidence_quote,
+                    :confidence_score, 1, :sender_email,
+                    :email_subject, :raw_content
+                )
+                ON DUPLICATE KEY UPDATE
+                    status = VALUES(status),
+                    contract_title = VALUES(contract_title),
+                    category = VALUES(category),
+                    expiration_or_renewal_date = VALUES(expiration_or_renewal_date),
+                    notice_period_days = VALUES(notice_period_days),
+                    calculated_cancellation_deadline = VALUES(calculated_cancellation_deadline),
+                    auto_renewal_term_months = VALUES(auto_renewal_term_months),
+                    annual_spend_estimate = VALUES(annual_spend_estimate),
+                    price_escalation_summary = VALUES(price_escalation_summary),
+                    coi_or_compliance_expiry = VALUES(coi_or_compliance_expiry),
+                    key_risk_flags = VALUES(key_risk_flags),
+                    source_evidence_quote = VALUES(source_evidence_quote),
+                    updated_at = CURRENT_TIMESTAMP
+            """)
+
+            conn.execute(insert_sql, {
+                "workspace_id": ws_id,
+                "fingerprint_hash": fp_hash,
+                "status": c["status"],
+                "vendor_name": c["vendor_name"],
+                "contract_title": c["contract_title"],
+                "category": c["category"],
+                "expiration_or_renewal_date": c["expiration_or_renewal_date"].isoformat(),
+                "notice_period_days": c["notice_period_days"],
+                "calculated_cancellation_deadline": c["calculated_cancellation_deadline"].isoformat(),
+                "auto_renewal_term_months": c["auto_renewal_term_months"],
+                "annual_spend_estimate": c["annual_spend_estimate"],
+                "currency": c["currency"],
+                "price_escalation_summary": c["price_escalation_summary"],
+                "coi_or_compliance_expiry": c["coi_or_compliance_expiry"].isoformat(),
+                "key_risk_flags": json.dumps(c["key_risk_flags"]),
+                "source_evidence_quote": c["source_evidence_quote"],
+                "confidence_score": c["confidence_score"],
+                "sender_email": c["sender_email"],
+                "email_subject": c["email_subject"],
+                "raw_content": f"Dummy contract content for {c['vendor_name']} - {c['contract_title']}",
+            })
+            inserted_contracts.append(c["vendor_name"])
+
+    return {
+        "workspace_id": ws_id,
+        "workspace_name": "Apex Property Management",
+        "vertical_id": "property_mgmt",
+        "associated_emails": list(emails_to_add),
+        "contracts_seeded": inserted_contracts,
+        "count": len(inserted_contracts),
+    }
