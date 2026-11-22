@@ -1115,3 +1115,29 @@ def update_ingestion_job(
     except Exception as e:
         logger.error(f"Error updating ingestion job {job_id}: {e}")
         return False
+
+
+def reset_database_data(preserve_demo_seed: bool = False) -> Dict[str, Any]:
+    """
+    Delete all rows from contracts, alert_logs, ingestion_jobs, oauth_connections,
+    workspace_members, and workspaces tables so the user can test completely from scratch.
+    """
+    counts = {}
+    with engine.begin() as conn:
+        conn.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
+        for table in ["alert_logs", "contracts", "ingestion_jobs", "oauth_connections", "workspace_members", "workspaces"]:
+            try:
+                row_count = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+                conn.execute(text(f"DELETE FROM {table};"))
+                counts[table] = int(row_count or 0)
+            except Exception as ex:
+                logger.warning(f"Could not clear table {table}: {ex}")
+                counts[table] = f"error: {str(ex)}"
+
+        if preserve_demo_seed:
+            conn.execute(text("INSERT IGNORE INTO workspaces (id, name, vertical_id) VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');"))
+            conn.execute(text("INSERT IGNORE INTO workspace_members (workspace_id, email, role) VALUES ('ws_default', 'demo@contractwatchdog.com', 'owner'), ('ws_default', 'admin@contractwatchdog.com', 'owner');"))
+
+        conn.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
+    logger.info(f"Database reset executed: {counts}")
+    return counts

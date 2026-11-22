@@ -44,6 +44,7 @@ from db import (
     get_user_workspaces,
     can_user_access_workspace,
     save_oauth_connection,
+    reset_database_data,
 )
 from parser import parse_inbound_email
 from extractor import extract_contract_from_text, ContractExtractionResult
@@ -801,6 +802,32 @@ def save_connector_token():
         "provider": provider,
         "email": email,
         "message": f"Successfully saved and encrypted OAuth credentials for {provider} ({email}).",
+    }), 200
+
+
+@app.route("/api/admin/reset-data", methods=["GET", "POST"])
+def admin_reset_data():
+    """
+    Maintenance route to wipe all contracts, workspaces, members, jobs, and alerts
+    so testing can be conducted completely from scratch.
+    Pass ?confirm=true or POST {"confirm": true}.
+    """
+    confirm = request.args.get("confirm", "").lower() in ("true", "1", "yes")
+    if not confirm and request.is_json:
+        confirm = bool((request.get_json(silent=True) or {}).get("confirm"))
+
+    if not confirm:
+        return jsonify({
+            "error": "Confirmation required. Pass ?confirm=true to delete all data from contract and workspace tables.",
+            "status": "pending_confirmation"
+        }), 400
+
+    deleted = reset_database_data(preserve_demo_seed=False)
+    session.clear()
+    return jsonify({
+        "status": "success",
+        "message": "All data in contract and workspace tables deleted successfully.",
+        "deleted_records": deleted,
     }), 200
 
 
