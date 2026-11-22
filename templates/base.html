@@ -49,7 +49,7 @@
           <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-indigo-700 dark:from-white dark:to-indigo-300 bg-clip-text text-transparent">Contract Watchdog</span>
         </a>
 
-        <!-- Right Side: User Session Only (if authenticated) -->
+        <!-- Right Side: User Session or Sign-in -->
         {% if session.get('user_email') %}
         <div class="flex items-center space-x-3 text-xs">
           <span class="font-mono text-slate-500 dark:text-slate-400 hidden sm:inline" title="{{ session.get('user_email') }}">
@@ -59,6 +59,11 @@
             Sign out
           </a>
         </div>
+        {% else %}
+        <a href="/auth/login{% if vertical_id %}?vertical={{ vertical_id }}{% endif %}" class="inline-flex items-center space-x-1 text-xs sm:text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+          <span>Sign-in with Google or Microsoft</span>
+          <span>&rarr;</span>
+        </a>
         {% endif %}
 
       </div>

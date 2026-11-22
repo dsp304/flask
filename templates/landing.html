@@ -69,7 +69,7 @@
   <!-- ========================================================================= -->
   <!-- 3. HOW WATCHDOG HELPS THIS VERTICAL -->
   <!-- ========================================================================= -->
-  <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-10 shadow-sm space-y-8">
+  <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-10 shadow-sm space-y-6">
     
     <!-- Tailored Headline & Subheadline -->
     <div class="space-y-3 text-center sm:text-left">
@@ -113,32 +113,6 @@
       </div>
     </div>
 
-    <!-- 3 Key Industry Traps Stopped -->
-    <div class="space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-          Contract Traps We Detect & Prevent:
-        </h3>
-        <span class="text-xs text-slate-400">Automated AI Detection</span>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {% for trap in vertical.traps_highlighted %}
-        <div class="p-5 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2.5">
-          <div class="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-sm">
-            !
-          </div>
-          <h4 class="font-bold text-sm text-slate-900 dark:text-white leading-snug">
-            {{ trap.title }}
-          </h4>
-          <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            {{ trap.desc }}
-          </p>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-
     <!-- Supported Vendor Categories -->
     <div class="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
       <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -148,19 +122,6 @@
         {% for cat in vertical.categories %}
         <span class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium border border-slate-200 dark:border-slate-700">
           {{ cat }}
-        </span>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- Trust Strip -->
-    <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
-      <span>{{ vertical.trust_strip }}</span>
-      <div class="flex flex-wrap gap-2">
-        {% for badge in vertical.trust_badges %}
-        <span class="inline-flex items-center space-x-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-          <span>✓</span>
-          <span>{{ badge }}</span>
         </span>
         {% endfor %}
       </div>
@@ -195,16 +156,6 @@
         <span>View Demo Dashboard</span>
       </a>
 
-    </div>
-
-    <!-- Sign-in Link -->
-    <div class="text-sm text-slate-500 dark:text-slate-400">
-      <span>Already have an account? </span>
-      <a 
-        href="/auth/login?vertical={{ vertical_id }}" 
-        class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
-        Sign-in with Google or Microsoft &rarr;
-      </a>
     </div>
   </div>
 
