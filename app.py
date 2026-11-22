@@ -437,5 +437,72 @@ def inbound_email_webhook():
     }), 201
 
 
+# ---------------------------------------------------------------------------
+# Task 6 Alert Scanner & Worker Trigger Endpoints
+# ---------------------------------------------------------------------------
+@app.route("/api/alerts/run", methods=["POST", "GET"])
+def trigger_alert_scan():
+    """
+    Trigger daily contract cancellation deadline alert scan via API or Cron.
+    Queries contracts within vertical lead windows and records alerts into alert_logs.
+    """
+    from alerts import run_alert_scan
+    workspace_id = request.args.get("workspace_id")
+    dry_run = request.args.get("dry_run", "").lower() in ("true", "1")
+    force = request.args.get("force", "").lower() in ("true", "1")
+
+    result = run_alert_scan(workspace_id=workspace_id, dry_run=dry_run, force=force)
+    return jsonify(result), 200
+
+
+@app.route("/api/alerts/history", methods=["GET"])
+def alert_history():
+    """Retrieve audit trail of dispatched contract cancellation alerts."""
+    from db import get_alert_logs
+    workspace_id = request.args.get("workspace_id")
+    limit = int(request.args.get("limit", 50))
+    logs = get_alert_logs(workspace_id=workspace_id, limit=limit)
+    return jsonify({
+        "workspace_id": workspace_id or "all",
+        "total_alerts": len(logs),
+        "alerts": logs,
+    }), 200
+
+
+@app.route("/api/worker/backfill", methods=["POST"])
+def trigger_worker_backfill():
+    """
+    Trigger historical connector backfill (Microsoft Graph or Google Workspace).
+    """
+    from worker import MicrosoftGraphConnector, GoogleWorkspaceConnector, ingest_normalized_message
+    data = request.get_json(silent=True) or request.args.to_dict()
+    workspace_id = data.get("workspace_id") or "ws_default"
+    connector_type = (data.get("connector") or "all").lower()
+    vertical_id = get_workspace_vertical(workspace_id)
+
+    results = []
+
+    if connector_type in ("microsoft", "all"):
+        ms_conn = MicrosoftGraphConnector(workspace_id)
+        messages = ms_conn.fetch_historical_messages(vertical_id)
+        for m in messages:
+            res = ingest_normalized_message(workspace_id, m)
+            results.append({"connector": "microsoft_graph", "result": res})
+
+    if connector_type in ("google", "all"):
+        g_conn = GoogleWorkspaceConnector(workspace_id)
+        messages = g_conn.fetch_historical_messages(vertical_id)
+        for m in messages:
+            res = ingest_normalized_message(workspace_id, m)
+            results.append({"connector": "google_workspace", "result": res})
+
+    return jsonify({
+        "workspace_id": workspace_id,
+        "vertical_id": vertical_id,
+        "processed_count": len(results),
+        "items": results,
+    }), 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)

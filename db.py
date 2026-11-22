@@ -189,6 +189,44 @@ def init_db():
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
 
+    create_alert_logs_sql = """
+    CREATE TABLE IF NOT EXISTS alert_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        contract_id INT NOT NULL,
+        workspace_id VARCHAR(64) NOT NULL,
+        alert_type VARCHAR(64) NOT NULL DEFAULT 'deadline_warning',
+        calculated_cancellation_deadline DATE NULL,
+        days_left INT NULL,
+        lead_days_window INT NOT NULL,
+        recipient_email VARCHAR(255) NULL,
+        alert_summary TEXT NULL,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_contract_alert UNIQUE (contract_id, calculated_cancellation_deadline, alert_type),
+        INDEX idx_alert_contract (contract_id),
+        INDEX idx_alert_workspace (workspace_id),
+        INDEX idx_alert_sent_at (sent_at),
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+
+    create_ingestion_jobs_sql = """
+    CREATE TABLE IF NOT EXISTS ingestion_jobs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        workspace_id VARCHAR(64) NOT NULL,
+        job_type VARCHAR(64) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        payload JSON NULL,
+        messages_found INT DEFAULT 0,
+        contracts_extracted INT DEFAULT 0,
+        duplicates_skipped INT DEFAULT 0,
+        error_message TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_job_ws (workspace_id),
+        INDEX idx_job_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+
     # Seed default workspace if absent
     seed_default_workspace_sql = """
     INSERT IGNORE INTO workspaces (id, name, vertical_id)
@@ -200,6 +238,8 @@ def init_db():
             conn.execute(text(create_workspaces_sql))
             conn.execute(text(create_contracts_sql))
             conn.execute(text(create_oauth_connections_sql))
+            conn.execute(text(create_alert_logs_sql))
+            conn.execute(text(create_ingestion_jobs_sql))
             conn.execute(text(seed_default_workspace_sql))
         logger.info("Database initialized successfully with utf8mb4 support.")
     except Exception as e:
@@ -710,3 +750,212 @@ def get_oauth_connection(workspace_id: str, provider: str) -> Optional[Dict[str,
         conn_dict["access_token"] = decrypt_token(conn_dict.get("encrypted_access_token"))
         conn_dict["refresh_token"] = decrypt_token(conn_dict.get("encrypted_refresh_token"))
         return conn_dict
+
+
+# ---------------------------------------------------------------------------
+# Task 6 Alert Audit & Dispatch Database Helpers
+# ---------------------------------------------------------------------------
+def check_alert_already_sent(contract_id: int, deadline: str, alert_type: str = "deadline_warning") -> bool:
+    """
+    Check if an alert has already been logged for this contract, deadline, and alert_type.
+    Enforces idempotency and prevents spamming duplicate notifications.
+    """
+    query = text("""
+        SELECT 1 FROM alert_logs
+        WHERE contract_id = :contract_id
+          AND calculated_cancellation_deadline = :deadline
+          AND alert_type = :alert_type
+        LIMIT 1
+    """)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(query, {
+                "contract_id": contract_id,
+                "deadline": deadline,
+                "alert_type": alert_type,
+            }).fetchone()
+            return row is not None
+    except Exception as e:
+        logger.warning(f"Error checking alert log existence for contract {contract_id}: {e}")
+        return False
+
+
+def record_alert_log(
+    contract_id: int,
+    workspace_id: str,
+    calculated_cancellation_deadline: str,
+    days_left: int,
+    lead_days_window: int,
+    alert_summary: str,
+    alert_type: str = "deadline_warning",
+    recipient_email: Optional[str] = None,
+) -> bool:
+    """
+    Persist dispatched alert to alert_logs for audit tracking and idempotency.
+    """
+    insert_sql = text("""
+        INSERT INTO alert_logs (
+            contract_id,
+            workspace_id,
+            alert_type,
+            calculated_cancellation_deadline,
+            days_left,
+            lead_days_window,
+            recipient_email,
+            alert_summary
+        ) VALUES (
+            :contract_id,
+            :workspace_id,
+            :alert_type,
+            :calculated_cancellation_deadline,
+            :days_left,
+            :lead_days_window,
+            :recipient_email,
+            :alert_summary
+        )
+        ON DUPLICATE KEY UPDATE sent_at = CURRENT_TIMESTAMP
+    """)
+    params = {
+        "contract_id": contract_id,
+        "workspace_id": workspace_id,
+        "alert_type": alert_type,
+        "calculated_cancellation_deadline": calculated_cancellation_deadline,
+        "days_left": days_left,
+        "lead_days_window": lead_days_window,
+        "recipient_email": recipient_email,
+        "alert_summary": alert_summary,
+    }
+    try:
+        with engine.begin() as conn:
+            conn.execute(insert_sql, params)
+            return True
+    except Exception as e:
+        logger.error(f"Failed to record alert log for contract {contract_id}: {e}")
+        return False
+
+
+def get_active_contracts_for_alert_scan(workspace_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Fetch active contracts with calculated cancellation deadlines.
+    Joins with workspaces to retrieve each workspace's vertical_id and default alert lead days.
+    """
+    query_str = """
+        SELECT 
+            c.*,
+            w.vertical_id,
+            w.name AS workspace_name
+        FROM contracts c
+        JOIN workspaces w ON c.workspace_id = w.id
+        WHERE c.status = 'active'
+          AND c.calculated_cancellation_deadline IS NOT NULL
+    """
+    params = {}
+    if workspace_id:
+        query_str += " AND c.workspace_id = :workspace_id"
+        params["workspace_id"] = workspace_id
+    query_str += " ORDER BY c.calculated_cancellation_deadline ASC"
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(query_str), params).mappings().all()
+            return [_hydrate_contract_record(dict(r)) for r in rows]
+    except Exception as e:
+        logger.error(f"Error querying contracts for alert scan: {e}")
+        return []
+
+
+def get_alert_logs(workspace_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    """Retrieve audit history of dispatched alerts."""
+    query_str = """
+        SELECT 
+            a.*,
+            c.vendor_name,
+            c.contract_title
+        FROM alert_logs a
+        LEFT JOIN contracts c ON a.contract_id = c.id
+    """
+    params = {"limit": limit}
+    if workspace_id:
+        query_str += " WHERE a.workspace_id = :workspace_id"
+        params["workspace_id"] = workspace_id
+    query_str += " ORDER BY a.sent_at DESC LIMIT :limit"
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(query_str), params).mappings().all()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error retrieving alert logs: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Task 6 Ingestion Job Queue Database Helpers
+# ---------------------------------------------------------------------------
+def create_ingestion_job(workspace_id: str, job_type: str, payload: Optional[Dict[str, Any]] = None) -> int:
+    """Create an asynchronous mailbox ingestion job."""
+    insert_sql = text("""
+        INSERT INTO ingestion_jobs (workspace_id, job_type, status, payload)
+        VALUES (:workspace_id, :job_type, 'pending', :payload)
+    """)
+    params = {
+        "workspace_id": workspace_id,
+        "job_type": job_type,
+        "payload": json.dumps(payload or {}),
+    }
+    with engine.begin() as conn:
+        res = conn.execute(insert_sql, params)
+        return res.lastrowid
+
+
+def get_pending_ingestion_jobs(limit: int = 10) -> List[Dict[str, Any]]:
+    """Fetch next batch of pending ingestion jobs."""
+    query = text("""
+        SELECT * FROM ingestion_jobs
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        LIMIT :limit
+    """)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"limit": limit}).mappings().all()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error fetching pending ingestion jobs: {e}")
+        return []
+
+
+def update_ingestion_job(
+    job_id: int,
+    status: str,
+    messages_found: int = 0,
+    contracts_extracted: int = 0,
+    duplicates_skipped: int = 0,
+    error_message: Optional[str] = None,
+) -> bool:
+    """Update ingestion job progress and state."""
+    update_sql = text("""
+        UPDATE ingestion_jobs SET
+            status = :status,
+            messages_found = :messages_found,
+            contracts_extracted = :contracts_extracted,
+            duplicates_skipped = :duplicates_skipped,
+            error_message = :error_message,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :job_id
+    """)
+    params = {
+        "job_id": job_id,
+        "status": status,
+        "messages_found": messages_found,
+        "contracts_extracted": contracts_extracted,
+        "duplicates_skipped": duplicates_skipped,
+        "error_message": error_message,
+    }
+    try:
+        with engine.begin() as conn:
+            conn.execute(update_sql, params)
+            return True
+    except Exception as e:
+        logger.error(f"Error updating ingestion job {job_id}: {e}")
+        return False

@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS contracts (
 CREATE TABLE IF NOT EXISTS oauth_connections (
     id INT AUTO_INCREMENT PRIMARY KEY,
     workspace_id VARCHAR(64) NOT NULL,
-    provider VARCHAR(64) NOT NULL,
+    provider VARCHAR(64) NOT NULL, -- 'microsoft', 'google'
     email VARCHAR(255) NULL,
     encrypted_access_token TEXT NULL,
     encrypted_refresh_token TEXT NULL,
@@ -56,6 +56,42 @@ CREATE TABLE IF NOT EXISTS oauth_connections (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_oauth_ws_provider (workspace_id, provider)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Alert Logs table to enforce notification idempotency and audit history
+CREATE TABLE IF NOT EXISTS alert_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    contract_id INT NOT NULL,
+    workspace_id VARCHAR(64) NOT NULL,
+    alert_type VARCHAR(64) NOT NULL DEFAULT 'deadline_warning', -- 'deadline_warning', 'overdue_notice', 'coi_expiration'
+    calculated_cancellation_deadline DATE NULL,
+    days_left INT NULL,
+    lead_days_window INT NOT NULL,
+    recipient_email VARCHAR(255) NULL,
+    alert_summary TEXT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_contract_alert UNIQUE (contract_id, calculated_cancellation_deadline, alert_type),
+    INDEX idx_alert_contract (contract_id),
+    INDEX idx_alert_workspace (workspace_id),
+    INDEX idx_alert_sent_at (sent_at),
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Ingestion Jobs table for asynchronous mailbox backfill queue
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    workspace_id VARCHAR(64) NOT NULL,
+    job_type VARCHAR(64) NOT NULL, -- 'webhook', 'microsoft_graph', 'google_workspace'
+    status VARCHAR(32) NOT NULL DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
+    payload JSON NULL,
+    messages_found INT DEFAULT 0,
+    contracts_extracted INT DEFAULT 0,
+    duplicates_skipped INT DEFAULT 0,
+    error_message TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_job_ws (workspace_id),
+    INDEX idx_job_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Initial Seed Data
