@@ -371,9 +371,10 @@ def get_workspace_emails(workspace_id: str) -> List[str]:
     if not workspace_id:
         return []
     query = text("""
-        SELECT DISTINCT email FROM workspace_members
+        SELECT email FROM workspace_members
         WHERE workspace_id = :workspace_id
-        ORDER BY created_at ASC
+        GROUP BY email
+        ORDER BY MIN(created_at) ASC
     """)
     try:
         with engine.connect() as conn:
