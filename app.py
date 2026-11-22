@@ -55,10 +55,57 @@ def format_search_query_string(keywords: list) -> str:
     return " OR ".join(terms)
 
 
+def render_vertical_landing(vertical_id: str):
+    """Render tailored vertical landing page with headline, subheadline, ROI hook, and trust strip."""
+    if vertical_id not in VERTICAL_CONFIGS:
+        vertical_id = "general_b2b"
+    vertical = VERTICAL_CONFIGS[vertical_id]
+    all_workspaces = list_workspaces()
+    return render_template(
+        "landing.html",
+        active_nav="landing",
+        vertical_id=vertical_id,
+        vertical=vertical,
+        all_workspaces=all_workspaces,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Task 5 Landing Page Routes
+# ---------------------------------------------------------------------------
+@app.route("/", methods=["GET"])
+def landing_general_b2b():
+    """General Business landing page (vertical_id='general_b2b')."""
+    return render_vertical_landing("general_b2b")
+
+
+@app.route("/property-management", methods=["GET"])
+def landing_property_management():
+    """Property Management landing page (vertical_id='property_mgmt')."""
+    return render_vertical_landing("property_mgmt")
+
+
+@app.route("/dental-clinics", methods=["GET"])
+def landing_dental_clinics():
+    """Dental & Medical Clinics landing page (vertical_id='dental_medical')."""
+    return render_vertical_landing("dental_medical")
+
+
+@app.route("/msp", methods=["GET"])
+def landing_msp():
+    """MSPs & IT Agencies landing page (vertical_id='msp_it')."""
+    return render_vertical_landing("msp_it")
+
+
+@app.route("/logistics", methods=["GET"])
+def landing_logistics():
+    """Logistics & Light Manufacturing landing page (vertical_id='logistics_mfg')."""
+    return render_vertical_landing("logistics_mfg")
+
+
 # ---------------------------------------------------------------------------
 # Dashboard Route
 # ---------------------------------------------------------------------------
-@app.route("/", methods=["GET"])
 @app.route("/dashboard", methods=["GET"])
 def dashboard():
     """
@@ -186,12 +233,16 @@ def onboarding():
     plus copy-pasteable Gmail/M365 filter keywords for that vertical.
     """
     all_workspaces = list_workspaces()
+    requested_vertical = (request.args.get("vertical") or "general_b2b").strip()
+    if requested_vertical not in VERTICAL_CONFIGS:
+        requested_vertical = "general_b2b"
 
     if request.method == "GET":
         return render_template(
             "onboarding.html",
             active_nav="onboarding",
             verticals=VERTICAL_CONFIGS,
+            selected_vertical_id=requested_vertical,
             all_workspaces=all_workspaces,
             created_workspace=None,
         )

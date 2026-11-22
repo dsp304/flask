@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vertical.display_name }} · Contract Renewal Watchdog{% endblock %}
+
+{% block content %}
+<div class="space-y-16 lg:space-y-24 py-4 sm:py-8">
+
+  <!-- ========================================================================= -->
+  <!-- 1. HERO SECTION -->
+  <!-- ========================================================================= -->
+  <section class="text-center max-w-4xl mx-auto space-y-6">
+    
+    <!-- Vertical Badge -->
+    <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-xs font-semibold text-indigo-700 dark:text-indigo-300 shadow-sm">
+      <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+      <span>{{ vertical.display_name }} Contract Watchdog</span>
+    </div>
+
+    <!-- Tailored Headline -->
+    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.12]">
+      {{ vertical.headline }}
+    </h1>
+
+    <!-- Tailored Subheadline -->
+    <p class="text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto leading-relaxed">
+      {{ vertical.subheadline }}
+    </p>
+
+    <!-- Call to Actions -->
+    <div class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3.5">
+      <a 
+        href="/onboarding?vertical={{ vertical_id }}" 
+        class="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-base text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/25 transition transform hover:-translate-y-0.5 flex items-center justify-center space-x-2">
+        <span>{{ vertical.cta_text }}</span>
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+        </svg>
+      </a>
+
+      <a 
+        href="/dashboard" 
+        class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-semibold text-base text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 transition flex items-center justify-center space-x-2">
+        <span>View Demo Dashboard</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono">Live</span>
+      </a>
+    </div>
+
+    <!-- Micro-Guarantees -->
+    <div class="pt-3 flex flex-wrap items-center justify-center gap-y-2 gap-x-6 text-xs text-slate-500 dark:text-slate-400">
+      <span class="flex items-center space-x-1.5">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+        </svg>
+        <span>No credit card required</span>
+      </span>
+      <span class="flex items-center space-x-1.5">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+        </svg>
+        <span>Dedicated inbound email forwarding</span>
+      </span>
+      <span class="flex items-center space-x-1.5">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+        </svg>
+        <span>Gmail & Microsoft 365 compatible</span>
+      </span>
+    </div>
+
+  </section>
+
+
+  <!-- ========================================================================= -->
+  <!-- 2. TRUST STRIP & PROOF BADGES -->
+  <!-- ========================================================================= -->
+  <section class="border-y border-slate-200 dark:border-slate-800 py-8 bg-slate-50/60 dark:bg-slate-900/40 rounded-2xl">
+    <div class="max-w-5xl mx-auto px-4 text-center space-y-4">
+      <p class="text-xs uppercase font-bold tracking-widest text-slate-500 dark:text-slate-400">
+        {{ vertical.trust_strip }}
+      </p>
+
+      <div class="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 pt-1">
+        {% for badge in vertical.trust_badges %}
+        <span class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm">
+          <svg class="w-3.5 h-3.5 text-indigo-500" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+          </svg>
+          <span>{{ badge }}</span>
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ========================================================================= -->
+  <!-- 3. ROI HOOK & METRIC BANNER -->
+  <!-- ========================================================================= -->
+  <section class="max-w-5xl mx-auto">
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white p-8 sm:p-12 shadow-xl border border-indigo-800/40">
+      
+      <!-- Background subtle glow -->
+      <div class="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+        
+        <!-- Left: Stat Metric Callout -->
+        <div class="text-center md:text-left space-y-1">
+          <div class="text-xs uppercase font-bold tracking-wider text-indigo-300">
+            {{ vertical.stat_label }}
+          </div>
+          <div class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-100 to-indigo-300">
+            {{ vertical.stat_metric }}
+          </div>
+          <div class="text-xs text-indigo-300/80 pt-1">
+            Default watchdog alert window: <strong>{{ vertical.default_alert_lead_days }} days lead time</strong>
+          </div>
+        </div>
+
+        <!-- Right: Tailored ROI Hook Statement -->
+        <div class="flex-1 max-w-xl space-y-4">
+          <h3 class="text-xl sm:text-2xl font-bold leading-snug">
+            {{ vertical.roi_hook }}
+          </h3>
+          <p class="text-sm text-indigo-200/90 leading-relaxed">
+            Standard cancellation policies require 30 to 120 days notice before expiration. Once the notice window closes, evergreen rollovers lock in at elevated rates with no exit option.
+          </p>
+          <div class="pt-2">
+            <a 
+              href="/onboarding?vertical={{ vertical_id }}" 
+              class="inline-flex items-center space-x-2 text-sm font-semibold text-white bg-indigo-500 hover:bg-indigo-400 px-4 py-2 rounded-lg transition shadow-sm">
+              <span>Set Up Inbound Webhook</span>
+              <span>&rarr;</span>
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ========================================================================= -->
+  <!-- 4. INDUSTRY TRAPS BREAKDOWN (What our AI catches) -->
+  <!-- ========================================================================= -->
+  <section class="max-w-5xl mx-auto space-y-8">
+    <div class="text-center space-y-2">
+      <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+        Predatory Contract Traps Caught in {{ vertical.display_name }}
+      </h2>
+      <p class="text-sm text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+        Vendor agreements in this vertical hide specific legal traps designed to force automatic renewals. Our Gemini-powered extractor parses and flags them instantly.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {% for trap in vertical.traps_highlighted %}
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition space-y-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400 font-bold">
+          ⚠️
+        </div>
+        <h3 class="text-base font-bold text-slate-900 dark:text-white">
+          {{ trap.title }}
+        </h3>
+        <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+          {{ trap.desc }}
+        </p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Monitored Categories Pill List -->
+    <div class="bg-slate-50 dark:bg-slate-900/60 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+          Monitored Categories in this Vertical
+        </span>
+        <span class="text-xs text-slate-500 font-mono">{{ vertical.categories|length }} specialized categories</span>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {% for cat in vertical.categories %}
+        <span class="px-3 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs">
+          🏷️ {{ cat }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ========================================================================= -->
+  <!-- 5. VERTICAL SWITCHER BAR (Explore other verticals) -->
+  <!-- ========================================================================= -->
+  <section class="max-w-5xl mx-auto space-y-4">
+    <div class="text-center space-y-1">
+      <h3 class="text-sm uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
+        Explore Watchdogs for Other Verticals
+      </h3>
+      <p class="text-xs text-slate-500">Each tailored with domain-specific keyword filters and LLM contract traps:</p>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-center gap-2">
+      <a 
+        href="/" 
+        class="px-4 py-2 rounded-xl text-xs font-semibold transition border {% if vertical_id == 'general_b2b' %}bg-indigo-600 text-white border-indigo-600 shadow-sm{% else %}bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400{% endif %}">
+        🌐 General Business
+      </a>
+
+      <a 
+        href="/property-management" 
+        class="px-4 py-2 rounded-xl text-xs font-semibold transition border {% if vertical_id == 'property_mgmt' %}bg-indigo-600 text-white border-indigo-600 shadow-sm{% else %}bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400{% endif %}">
+        🏢 Property Management
+      </a>
+
+      <a 
+        href="/dental-clinics" 
+        class="px-4 py-2 rounded-xl text-xs font-semibold transition border {% if vertical_id == 'dental_medical' %}bg-indigo-600 text-white border-indigo-600 shadow-sm{% else %}bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400{% endif %}">
+        🩺 Dental & Medical Clinics
+      </a>
+
+      <a 
+        href="/msp" 
+        class="px-4 py-2 rounded-xl text-xs font-semibold transition border {% if vertical_id == 'msp_it' %}bg-indigo-600 text-white border-indigo-600 shadow-sm{% else %}bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400{% endif %}">
+        💻 MSPs & IT Agencies
+      </a>
+
+      <a 
+        href="/logistics" 
+        class="px-4 py-2 rounded-xl text-xs font-semibold transition border {% if vertical_id == 'logistics_mfg' %}bg-indigo-600 text-white border-indigo-600 shadow-sm{% else %}bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400{% endif %}">
+        📦 Logistics & Manufacturing
+      </a>
+    </div>
+  </section>
+
+
+  <!-- ========================================================================= -->
+  <!-- 6. FINAL BOTTOM CTA BANNER -->
+  <!-- ========================================================================= -->
+  <section class="max-w-5xl mx-auto">
+    <div class="text-center bg-slate-900 text-white rounded-3xl p-8 sm:p-12 shadow-xl space-y-6">
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
+        Ready to Put {{ vertical.display_name }} Renewals on Autopilot?
+      </h2>
+      <p class="text-sm sm:text-base text-slate-300 max-w-xl mx-auto">
+        Set up your dedicated watchdog inbound email in 60 seconds. Paste your auto-forwarding rule, and never lose money on a missed cancellation window again.
+      </p>
+      <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a 
+          href="/onboarding?vertical={{ vertical_id }}" 
+          class="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-base text-slate-900 bg-white hover:bg-slate-100 shadow-lg transition transform hover:-translate-y-0.5">
+          {{ vertical.cta_text }} &rarr;
+        </a>
+        <a 
+          href="/dashboard" 
+          class="text-sm font-semibold text-slate-300 hover:text-white underline">
+          Or view current monitored contracts
+        </a>
+      </div>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

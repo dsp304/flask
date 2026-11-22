@@ -56,9 +56,25 @@
 
         <!-- Center Nav Links -->
         <nav class="hidden md:flex items-center space-x-1">
-          <a href="/{% if current_workspace %}?workspace_id={{ current_workspace.id }}{% endif %}" class="px-3 py-2 text-sm font-medium rounded-md {% if active_nav == 'dashboard' %}text-indigo-600 dark:text-indigo-400 bg-indigo-50/70 dark:bg-indigo-950/40{% else %}text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white{% endif %} transition">
+          <a href="/" class="px-3 py-2 text-sm font-medium rounded-md {% if active_nav == 'landing' %}text-indigo-600 dark:text-indigo-400 bg-indigo-50/70 dark:bg-indigo-950/40{% else %}text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white{% endif %} transition">
+            Home
+          </a>
+          <a href="/dashboard{% if current_workspace %}?workspace_id={{ current_workspace.id }}{% endif %}" class="px-3 py-2 text-sm font-medium rounded-md {% if active_nav == 'dashboard' %}text-indigo-600 dark:text-indigo-400 bg-indigo-50/70 dark:bg-indigo-950/40{% else %}text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white{% endif %} transition">
             Dashboard
           </a>
+          <div class="relative group">
+            <button type="button" class="px-3 py-2 text-sm font-medium rounded-md text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition flex items-center space-x-1">
+              <span>Verticals</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            <div class="absolute left-0 mt-1 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 hidden group-hover:block z-50">
+              <a href="/property-management" class="block px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">🏢 Property Management</a>
+              <a href="/dental-clinics" class="block px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">🩺 Dental & Medical</a>
+              <a href="/msp" class="block px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">💻 MSPs & IT Agencies</a>
+              <a href="/logistics" class="block px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">📦 Logistics & Mfg</a>
+              <a href="/" class="block px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">🌐 General B2B</a>
+            </div>
+          </div>
           <a href="/onboarding" class="px-3 py-2 text-sm font-medium rounded-md {% if active_nav == 'onboarding' %}text-indigo-600 dark:text-indigo-400 bg-indigo-50/70 dark:bg-indigo-950/40{% else %}text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white{% endif %} transition">
             + New Workspace
           </a>
@@ -72,7 +88,7 @@
         <div class="flex items-center space-x-3">
           {% if all_workspaces %}
           <div class="relative inline-block text-left">
-            <form method="GET" action="/" id="workspace-switch-form" class="flex items-center space-x-2">
+            <form method="GET" action="/dashboard" id="workspace-switch-form" class="flex items-center space-x-2">
               <label for="workspace-select" class="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:inline">Workspace:</label>
               <select id="workspace-select" name="workspace_id" onchange="this.form.submit()" class="text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-200 shadow-sm font-medium">
                 {% for ws in all_workspaces %}

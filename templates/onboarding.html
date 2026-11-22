@@ -158,7 +158,7 @@
               </span>
               <span class="block text-[11px] font-mono text-slate-400">ID: {{ v_id }}</span>
             </div>
-            <input type="radio" name="vertical_id" value="{{ v_id }}" {% if loop.first %}checked{% endif %} class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 mt-1">
+            <input type="radio" name="vertical_id" value="{{ v_id }}" {% if selected_vertical_id and v_id == selected_vertical_id %}checked{% elif not selected_vertical_id and loop.first %}checked{% endif %} class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 mt-1">
           </div>
 
           <!-- Alert lead time badge -->
