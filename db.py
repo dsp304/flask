@@ -268,26 +268,27 @@ def init_db():
     """
 
     try:
+        # 1. Create tables if not exist
         with engine.begin() as conn:
             conn.execute(text(create_workspaces_sql))
             conn.execute(text(create_contracts_sql))
             conn.execute(text(create_oauth_connections_sql))
             conn.execute(text(create_alert_logs_sql))
             conn.execute(text(create_ingestion_jobs_sql))
-            conn.execute(text(seed_default_workspace_sql))
             conn.execute(text(create_workspace_members_sql))
-            conn.execute(text(seed_workspace_members_sql))
             conn.execute(text(create_user_profiles_sql))
 
-            # Automated safe column migrations
-            try:
+        # 2. Automated safe column migrations
+        try:
+            with engine.begin() as conn:
                 ws_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
                 if "default_notice_period_days" not in ws_cols:
                     conn.execute(text("ALTER TABLE workspaces ADD COLUMN default_notice_period_days INT NOT NULL DEFAULT 30;"))
-            except Exception as ex:
-                logger.warning(f"workspaces migration notice: {ex}")
+        except Exception as ex:
+            logger.warning(f"workspaces migration notice: {ex}")
 
-            try:
+        try:
+            with engine.begin() as conn:
                 c_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM contracts")).fetchall()]
                 if "attachment_filename" not in c_cols:
                     conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_filename VARCHAR(255) NULL;"))
@@ -295,8 +296,13 @@ def init_db():
                     conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_path VARCHAR(500) NULL;"))
                 if "how_to_change_summary" not in c_cols:
                     conn.execute(text("ALTER TABLE contracts ADD COLUMN how_to_change_summary TEXT NULL;"))
-            except Exception as ex:
-                logger.warning(f"contracts migration notice: {ex}")
+        except Exception as ex:
+            logger.warning(f"contracts migration notice: {ex}")
+
+        # 3. Seed default workspace and members after columns are guaranteed to exist
+        with engine.begin() as conn:
+            conn.execute(text(seed_default_workspace_sql))
+            conn.execute(text(seed_workspace_members_sql))
 
         logger.info("Database initialized successfully with utf8mb4 support and dynamic migrations.")
     except Exception as e:
