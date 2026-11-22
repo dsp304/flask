@@ -504,5 +504,72 @@ def trigger_worker_backfill():
     }), 200
 
 
+@app.route("/api/connectors/test", methods=["GET"])
+def test_connectors():
+    """
+    Test mailbox connectivity for Microsoft Graph and Google Workspace.
+    Verifies that access tokens are valid and reports the authenticated mailbox email address.
+    """
+    from worker import MicrosoftGraphConnector, GoogleWorkspaceConnector
+    workspace_id = request.args.get("workspace_id") or "ws_default"
+    provider = (request.args.get("provider") or "all").lower()
+    token = request.args.get("token")
+    vertical_id = get_workspace_vertical(workspace_id)
+
+    results = {}
+
+    if provider in ("microsoft", "all"):
+        ms = MicrosoftGraphConnector(workspace_id, access_token=token)
+        results["microsoft"] = ms.test_connection()
+        results["microsoft"]["query_preview"] = ms.build_24_month_search_query(vertical_id)
+
+    if provider in ("google", "all"):
+        g = GoogleWorkspaceConnector(workspace_id, access_token=token)
+        results["google"] = g.test_connection()
+        results["google"]["query_preview"] = g.build_24_month_search_query(vertical_id)
+
+    return jsonify({
+        "workspace_id": workspace_id,
+        "vertical_id": vertical_id,
+        "connectors": results,
+    }), 200
+
+
+@app.route("/api/connectors/save", methods=["POST"])
+def save_connector_token():
+    """
+    Store or update an encrypted OAuth connection for a workspace.
+    """
+    from db import save_oauth_connection
+    data = request.get_json(silent=True) or request.form.to_dict()
+    workspace_id = (data.get("workspace_id") or "ws_default").strip()
+    provider = (data.get("provider") or "microsoft").strip().lower()
+    email = (data.get("email") or "").strip()
+    access_token = (data.get("access_token") or "").strip()
+    refresh_token = (data.get("refresh_token") or "").strip()
+    scopes = (data.get("scopes") or ("Mail.Read" if provider == "microsoft" else "https://www.googleapis.com/auth/gmail.readonly")).strip()
+
+    if not access_token:
+        return jsonify({"error": "access_token is required"}), 400
+
+    conn_id = save_oauth_connection(
+        workspace_id=workspace_id,
+        provider=provider,
+        email=email,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        scopes=scopes,
+    )
+
+    return jsonify({
+        "status": "success",
+        "connection_id": conn_id,
+        "workspace_id": workspace_id,
+        "provider": provider,
+        "email": email,
+        "message": f"Successfully saved and encrypted OAuth credentials for {provider} ({email}).",
+    }), 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
