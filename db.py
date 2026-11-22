@@ -282,6 +282,8 @@ def init_db():
         try:
             with engine.begin() as conn:
                 ws_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
+                if "inbound_email_slug" not in ws_cols:
+                    conn.execute(text("ALTER TABLE workspaces ADD COLUMN inbound_email_slug VARCHAR(64) NULL;"))
                 if "default_notice_period_days" not in ws_cols:
                     conn.execute(text("ALTER TABLE workspaces ADD COLUMN default_notice_period_days INT NOT NULL DEFAULT 30;"))
         except Exception as ex:
@@ -1671,6 +1673,27 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
         emails_to_add.add("demo@contractwatchdog.com")
         emails_to_add.add("user@workspace.com")
         emails_to_add.add("user@enterprise.onmicrosoft.com")
+
+        # Ensure required columns exist dynamically
+        try:
+            ws_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
+            if "inbound_email_slug" not in ws_cols:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN inbound_email_slug VARCHAR(64) NULL;"))
+            if "default_notice_period_days" not in ws_cols:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN default_notice_period_days INT NOT NULL DEFAULT 30;"))
+        except Exception as ws_ex:
+            logger.warning(f"Ensuring workspace columns in seed: {ws_ex}")
+
+        try:
+            c_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM contracts")).fetchall()]
+            if "attachment_filename" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_filename VARCHAR(255) NULL;"))
+            if "attachment_path" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_path VARCHAR(500) NULL;"))
+            if "how_to_change_summary" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN how_to_change_summary TEXT NULL;"))
+        except Exception as c_ex:
+            logger.warning(f"Ensuring contract columns in seed: {c_ex}")
 
         for ws in workspaces_to_seed:
             ws_id = ws["id"]
