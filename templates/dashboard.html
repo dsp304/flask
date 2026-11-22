@@ -16,8 +16,8 @@
             {{ current_workspace.name }}
           </h1>
 
-          <!-- Workspace Switcher Dropdown -->
-          {% if all_workspaces %}
+          <!-- Workspace Switcher Dropdown (Only show if user has multiple real workspaces and not in demo) -->
+          {% if all_workspaces and all_workspaces|length > 1 and not is_demo and current_workspace.id != 'ws_default' and current_workspace.name != 'Demo Workspace' %}
           <form method="GET" action="/dashboard" class="inline-block m-0">
             <select name="workspace_id" onchange="this.form.submit()" class="text-xs sm:text-sm bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 dark:text-slate-300 shadow-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer">
               {% for ws in all_workspaces %}
@@ -38,7 +38,8 @@
           Alerts sent <strong>{{ vertical_info.default_alert_lead_days }} days</strong> before notice cutoff.
         </p>
 
-        <!-- Action Buttons: Show Email Setup & New Workspace -->
+        <!-- Action Buttons: Show Email Setup & New Workspace (Hidden for Demo Workspace / Demo Mode) -->
+        {% if not is_demo and current_workspace.id != 'ws_default' and current_workspace.name != 'Demo Workspace' %}
         <div class="pt-1 flex flex-wrap items-center gap-2.5">
           <!-- Show email setup button -->
           <button 
@@ -61,6 +62,7 @@
             New Workspace
           </a>
         </div>
+        {% endif %}
       </div>
 
       <!-- Right: Summary Metrics -->
@@ -461,6 +463,7 @@
   </div>
 </div>
 
+{% if not is_demo and current_workspace.id != 'ws_default' and current_workspace.name != 'Demo Workspace' %}
 <!-- ========================================================================= -->
 <!-- EMAIL SETUP & FORWARDING MODAL -->
 <!-- ========================================================================= -->
@@ -558,17 +561,20 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <!-- Embedded Contracts JSON for interactive modal hydration -->
 <script>
   const contractsData = {{ all_contracts_json|safe }};
 
   function openEmailSetupModal() {
-    document.getElementById('email-setup-modal').classList.remove('hidden');
+    const el = document.getElementById('email-setup-modal');
+    if (el) el.classList.remove('hidden');
   }
 
   function closeEmailSetupModal() {
-    document.getElementById('email-setup-modal').classList.add('hidden');
+    const el = document.getElementById('email-setup-modal');
+    if (el) el.classList.add('hidden');
   }
 
   function copyElementText(elementId, successMsg) {

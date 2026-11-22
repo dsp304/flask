@@ -104,6 +104,9 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         else:
             abort(404)
 
+    if workspace_id == "ws_default" or (current_workspace and (current_workspace.get("name") == "Demo Workspace" or current_workspace.get("id") == "ws_default")):
+        is_demo = True
+
     vertical_id = current_workspace.get("vertical_id") or "general_b2b"
     vertical_info = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
     search_query_string = format_search_query_string(vertical_info.get("search_keywords", []))
