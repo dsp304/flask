@@ -15,6 +15,8 @@ from flask import (
     flash,
     session,
     abort,
+    send_file,
+    Response,
 )
 from dotenv import load_dotenv
 
@@ -45,6 +47,9 @@ from db import (
     can_user_access_workspace,
     save_oauth_connection,
     reset_database_data,
+    get_user_profile,
+    save_user_profile,
+    update_workspace,
 )
 from parser import parse_inbound_email
 from extractor import extract_contract_from_text, ContractExtractionResult
@@ -112,6 +117,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
     search_query_string = format_search_query_string(vertical_info.get("search_keywords", []))
 
     active_contracts, review_contracts = get_dashboard_contracts(workspace_id)
+    workspace_emails = get_workspace_emails(workspace_id) if not is_demo else []
 
     total_spend = sum(
         float(c.get("annual_spend_estimate") or 0.0)
@@ -140,6 +146,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         active_nav="dashboard",
         current_workspace=current_workspace,
         all_workspaces=user_workspaces,
+        workspace_emails=workspace_emails,
         vertical_info=vertical_info,
         search_query_string=search_query_string,
         active_contracts=active_contracts,
@@ -149,6 +156,131 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         critical_deadlines=critical_deadlines,
         is_demo=is_demo,
     )
+
+
+def generate_synthetic_contract_pdf(contract: dict, filename: str) -> bytes:
+    """Generate a clean, professional PDF document for contracts without a physical disk file."""
+    try:
+        import fitz
+        doc = fitz.open()
+        page = doc.new_page(width=612, height=792)  # Standard Letter size
+
+        # Colors
+        NAVY = (0.09, 0.15, 0.28)
+        SLATE = (0.39, 0.45, 0.55)
+        DARK = (0.1, 0.1, 0.1)
+        AMBER = (0.85, 0.55, 0.1)
+        INDIGO = (0.31, 0.27, 0.75)
+        LIGHT_BG = (0.96, 0.97, 0.99)
+        BORDER_COLOR = (0.85, 0.88, 0.92)
+
+        # Header bar
+        page.draw_rect(fitz.Rect(0, 0, 612, 54), fill=NAVY)
+        page.insert_text(fitz.Point(36, 34), "CONTRACT RENEWAL WATCHDOG  |  OFFICIAL AGREEMENT RECORD", fontsize=10, color=(1, 1, 1))
+
+        # Title & Vendor
+        vendor = contract.get("vendor_name") or "Vendor Agreement"
+        title = contract.get("contract_title") or f"Agreement - {vendor}"
+        page.insert_text(fitz.Point(36, 90), title[:55], fontsize=17, color=NAVY)
+        page.insert_text(fitz.Point(36, 110), f"Vendor / Counterparty: {vendor}", fontsize=11, color=SLATE)
+        page.insert_text(fitz.Point(36, 126), f"Document Attachment: {filename}", fontsize=9, color=SLATE)
+
+        # Key Terms Box
+        page.draw_rect(fitz.Rect(36, 142, 576, 260), fill=LIGHT_BG, color=BORDER_COLOR)
+
+        col1_x = 50
+        col2_x = 320
+        y = 168
+
+        cat = contract.get("category") or "General"
+        spend = f"${float(contract.get('annual_spend_estimate') or 0):,.2f}" if contract.get("annual_spend_estimate") else "N/A"
+        expiry = str(contract.get("expiration_or_renewal_date") or "Not Specified")
+        notice = f"{contract.get('notice_period_days') or 30} days required"
+        deadline = str(contract.get("calculated_cancellation_deadline") or "Not Calculated")
+        renewal_term = f"{contract.get('auto_renewal_term_months') or 12} months" if contract.get("auto_renewal_term_months") else "Annual"
+
+        page.insert_text(fitz.Point(col1_x, y), "Category:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col1_x + 110, y), cat, fontsize=10, color=DARK)
+        page.insert_text(fitz.Point(col2_x, y), "Annual Spend:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col2_x + 110, y), spend, fontsize=10, color=DARK)
+
+        y += 24
+        page.insert_text(fitz.Point(col1_x, y), "Expiration / Renewal:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col1_x + 110, y), expiry, fontsize=10, color=DARK)
+        page.insert_text(fitz.Point(col2_x, y), "Notice Period:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col2_x + 110, y), notice, fontsize=10, color=DARK)
+
+        y += 24
+        page.insert_text(fitz.Point(col1_x, y), "Cancellation Deadline:", fontsize=10, color=INDIGO)
+        page.insert_text(fitz.Point(col1_x + 110, y), deadline, fontsize=10, color=INDIGO)
+        page.insert_text(fitz.Point(col2_x, y), "Renewal Extension:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col2_x + 110, y), renewal_term, fontsize=10, color=DARK)
+
+        y += 24
+        page.insert_text(fitz.Point(col1_x, y), "Status:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col1_x + 110, y), (contract.get("status") or "active").upper(), fontsize=10, color=DARK)
+        page.insert_text(fitz.Point(col2_x, y), "Confidence Score:", fontsize=10, color=SLATE)
+        page.insert_text(fitz.Point(col2_x + 110, y), f"{int((contract.get('confidence_score') or 0.95)*100)}%", fontsize=10, color=DARK)
+
+        # Section: How to Make Changes / Cancel Procedure
+        y = 285
+        page.insert_text(fitz.Point(36, y), "HOW TO MAKE CHANGES / NOTICE PROCEDURE", fontsize=10, color=INDIGO)
+        y += 8
+        page.draw_line(fitz.Point(36, y), fitz.Point(576, y), color=BORDER_COLOR)
+        y += 18
+        change_text = contract.get("how_to_change_summary") or "Written notice required to counterparty contact prior to cancellation deadline."
+        change_rect = fitz.Rect(36, y, 576, y + 45)
+        page.insert_textbox(change_rect, change_text, fontsize=9.5, color=DARK)
+
+        # Section: Key Risk Flags
+        y += 60
+        page.insert_text(fitz.Point(36, y), "KEY RISK FLAGS & RENEWAL RESTRICTIONS", fontsize=10, color=AMBER)
+        y += 8
+        page.draw_line(fitz.Point(36, y), fitz.Point(576, y), color=BORDER_COLOR)
+        y += 18
+        risk_flags = contract.get("key_risk_flags") or []
+        if isinstance(risk_flags, str):
+            try:
+                risk_flags = json.loads(risk_flags)
+            except Exception:
+                risk_flags = [risk_flags]
+        if not risk_flags:
+            risk_flags = ["Standard annual auto-renewal terms detected."]
+        for flag in risk_flags:
+            page.insert_text(fitz.Point(44, y), f"•  {flag}", fontsize=9, color=DARK)
+            y += 15
+
+        # Section: Source Evidence Quote
+        y += 10
+        page.insert_text(fitz.Point(36, y), "SOURCE EVIDENCE & CONTRACT CLAUSE EXCERPT", fontsize=10, color=NAVY)
+        y += 8
+        page.draw_line(fitz.Point(36, y), fitz.Point(576, y), color=BORDER_COLOR)
+        y += 16
+        quote = contract.get("source_evidence_quote") or "Clause extracted from executed master vendor agreement."
+        quote_rect = fitz.Rect(36, y, 576, y + 55)
+        page.insert_textbox(quote_rect, f'"{quote}"', fontsize=9, color=SLATE)
+
+        # Section: Raw Record Content Excerpt
+        y += 70
+        page.insert_text(fitz.Point(36, y), "RECORD DETAILS & EXTRACTED BODY EXCERPT", fontsize=10, color=SLATE)
+        y += 8
+        page.draw_line(fitz.Point(36, y), fitz.Point(576, y), color=BORDER_COLOR)
+        y += 16
+        raw_body = contract.get("raw_content") or f"Contract agreement record for {vendor} filed in Contract Renewal Watchdog."
+        body_rect = fitz.Rect(36, y, 576, 730)
+        page.insert_textbox(body_rect, raw_body[:800], fontsize=8.5, color=DARK)
+
+        # Footer
+        page.draw_line(fitz.Point(36, 745), fitz.Point(576, 745), color=BORDER_COLOR)
+        page.insert_text(fitz.Point(36, 760), "Contract Renewal Watchdog  •  Confidential & Proprietary", fontsize=8, color=SLATE)
+        page.insert_text(fitz.Point(460, 760), datetime.now().strftime("%B %d, %Y"), fontsize=8, color=SLATE)
+
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        return pdf_bytes
+    except Exception as e:
+        logger.exception("Failed to synthesize PDF with fitz; falling back to minimal PDF")
+        return b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000101 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF\n"
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +340,17 @@ def auth_login():
             return redirect(url_for("auth_login", vertical=vertical_id))
 
         session["user_email"] = email
-        session["user_name"] = email.split("@")[0]
         logger.info(f"User authenticated with work email: {email}")
+
+        # Check if user has completed initial profile setup
+        profile = get_user_profile(email)
+        if not profile or not profile.get("full_name"):
+            session["user_name"] = email.split("@")[0]
+            flash("Welcome! Please complete your profile to continue.", "info")
+            return redirect(url_for("user_profile", setup="1", vertical=vertical_id))
+
+        session["user_name"] = profile.get("full_name") or email.split("@")[0]
+        session["full_name"] = profile.get("full_name")
 
         # Check existing workspaces; if none, redirect user to create their first workspace
         workspaces = get_user_workspaces(email)
@@ -254,7 +395,17 @@ def auth_google():
     # Simulated / Instant Google Workspace Sign-In for dev & testing
     mock_email = (request.args.get("email") or f"user@workspace.com").strip().lower()
     session["user_email"] = mock_email
-    session["user_name"] = mock_email.split("@")[0]
+    logger.info(f"User authenticated with Google: {mock_email}")
+
+    profile = get_user_profile(mock_email)
+    if not profile or not profile.get("full_name"):
+        session["user_name"] = mock_email.split("@")[0]
+        flash("Welcome! Please complete your profile to continue.", "info")
+        return redirect(url_for("user_profile", setup="1", vertical=vertical_id))
+
+    session["user_name"] = profile.get("full_name") or mock_email.split("@")[0]
+    session["full_name"] = profile.get("full_name")
+
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
         flash(f"Signed in with Google as {mock_email}. Please create your first workspace.", "info")
@@ -288,7 +439,17 @@ def auth_microsoft():
     # Simulated / Instant Microsoft 365 Sign-In for dev & testing
     mock_email = (request.args.get("email") or f"user@enterprise.onmicrosoft.com").strip().lower()
     session["user_email"] = mock_email
-    session["user_name"] = mock_email.split("@")[0]
+    logger.info(f"User authenticated with Microsoft: {mock_email}")
+
+    profile = get_user_profile(mock_email)
+    if not profile or not profile.get("full_name"):
+        session["user_name"] = mock_email.split("@")[0]
+        flash("Welcome! Please complete your profile to continue.", "info")
+        return redirect(url_for("user_profile", setup="1", vertical=vertical_id))
+
+    session["user_name"] = profile.get("full_name") or mock_email.split("@")[0]
+    session["full_name"] = profile.get("full_name")
+
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
         flash(f"Signed in with Microsoft as {mock_email}. Please create your first workspace.", "info")
@@ -302,7 +463,7 @@ def auth_microsoft():
 def auth_callback(provider: str = "google"):
     """
     OAuth Callback Handler for Google and Microsoft.
-    Exchanges code for tokens, resolves email, and redirects user to /dashboard.
+    Exchanges code for tokens, resolves email, checks profile, and redirects.
     """
     code = request.args.get("code")
     vertical_id = request.args.get("state") or "general_b2b"
@@ -310,7 +471,15 @@ def auth_callback(provider: str = "google"):
     email = request.args.get("email") or session.get("user_email") or f"{provider}_user@company.com"
     email = email.strip().lower()
     session["user_email"] = email
-    session["user_name"] = email.split("@")[0]
+
+    profile = get_user_profile(email)
+    if not profile or not profile.get("full_name"):
+        session["user_name"] = email.split("@")[0]
+        flash("OAuth connection established. Please complete your profile to continue.", "info")
+        return redirect(url_for("user_profile", setup="1", vertical=vertical_id))
+
+    session["user_name"] = profile.get("full_name") or email.split("@")[0]
+    session["full_name"] = profile.get("full_name")
 
     workspaces = get_user_workspaces(email)
     if not workspaces:
@@ -319,6 +488,77 @@ def auth_callback(provider: str = "google"):
 
     flash(f"OAuth connection established for {email}.", "success")
     return redirect(url_for("dashboard"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+def user_profile():
+    """
+    User Profile Management Route:
+    - Initial sign-up setup mode (?setup=1) requires basic user information (Full Name, Company, Role, Phone).
+    - Later allows users to view and update their profile details at any time.
+    """
+    user_email = session.get("user_email")
+    if not user_email:
+        flash("Please sign in to view or edit your profile.", "info")
+        return redirect(url_for("auth_login"))
+
+    is_setup = request.args.get("setup") == "1" or request.form.get("is_setup") == "1"
+    vertical_id = (request.args.get("vertical") or request.form.get("vertical") or "general_b2b").strip()
+    if vertical_id not in VERTICAL_CONFIGS:
+        vertical_id = "general_b2b"
+
+    if request.method == "POST":
+        full_name = (request.form.get("full_name") or "").strip()
+        company_name = (request.form.get("company_name") or "").strip()
+        phone = (request.form.get("phone") or "").strip()
+        role_title = (request.form.get("role_title") or "").strip()
+
+        if not full_name:
+            flash("Full Name is required.", "error")
+            profile = {
+                "email": user_email,
+                "full_name": full_name,
+                "company_name": company_name,
+                "phone": phone,
+                "role_title": role_title,
+            }
+            return render_template(
+                "profile.html",
+                active_nav="profile",
+                profile=profile,
+                is_setup=is_setup,
+                vertical_id=vertical_id,
+            )
+
+        save_user_profile(
+            email=user_email,
+            full_name=full_name,
+            company_name=company_name,
+            phone=phone,
+            role_title=role_title,
+        )
+        session["user_name"] = full_name
+        session["full_name"] = full_name
+
+        if is_setup:
+            workspaces = get_user_workspaces(user_email)
+            if not workspaces:
+                flash(f"Welcome, {full_name}! Now please set up your first workspace.", "success")
+                return redirect(url_for("onboarding", vertical=vertical_id))
+            flash(f"Welcome, {full_name}!", "success")
+            return redirect(url_for("dashboard"))
+
+        flash("Profile updated successfully.", "success")
+        return redirect(url_for("user_profile"))
+
+    profile = get_user_profile(user_email) or {"email": user_email}
+    return render_template(
+        "profile.html",
+        active_nav="profile",
+        profile=profile,
+        is_setup=is_setup,
+        vertical_id=vertical_id,
+    )
 
 
 @app.route("/auth/logout", methods=["GET", "POST"])
@@ -452,10 +692,11 @@ def approve_contract(contract_id: int):
 @app.route("/onboarding", methods=["GET", "POST"])
 def onboarding():
     """
-    Onboarding & Workspace Creation Route (Task 7):
+    Onboarding & Workspace Creation Route:
     - Default the new workspace's associated email to session['user_email'].
-    - Allow adding a secondary linked email for flexible multi-email access.
-    - Record both emails in workspace_members.
+    - Allow user to specify custom default notice period (days).
+    - Allow user to add multiple authorized email addresses under the same workspace.
+    - Record all emails in workspace_members.
     - Display dedicated inbound address, filter keywords, and clear note on authorized emails.
     """
     user_email = session.get("user_email")
@@ -483,7 +724,29 @@ def onboarding():
     raw_id = (request.form.get("workspace_id") or "").strip()
     vertical_id = requested_vertical
     creator_email = (request.form.get("creator_email") or user_email).strip().lower()
+
+    # Read default notice period days
+    raw_notice_days = request.form.get("default_notice_period_days")
+    try:
+        default_notice_period_days = int(raw_notice_days) if raw_notice_days else 30
+    except (ValueError, TypeError):
+        default_notice_period_days = 30
+
+    # Collect authorized emails: creator_email, user_email, secondary_email, and dynamic additional_emails[]
+    member_emails = []
+    for em in request.form.getlist("additional_emails[]") + request.form.getlist("additional_emails"):
+        clean_em = em.strip().lower()
+        if clean_em and "@" in clean_em and clean_em not in member_emails:
+            member_emails.append(clean_em)
+
     secondary_email = (request.form.get("secondary_email") or "").strip().lower()
+    if secondary_email and "@" in secondary_email and secondary_email not in member_emails:
+        member_emails.append(secondary_email)
+
+    if creator_email and creator_email not in member_emails:
+        member_emails.append(creator_email)
+    if user_email and user_email not in member_emails:
+        member_emails.append(user_email)
 
     # Auto-generate clean slug if missing
     if not raw_id:
@@ -495,16 +758,15 @@ def onboarding():
     if not name:
         name = f"Workspace {raw_id}"
 
-    # Persist workspace and register both creator & secondary emails in workspace_members
+    # Persist workspace and register all member emails in workspace_members
     created_ws = create_workspace(
         workspace_id=raw_id,
         name=name,
         vertical_id=vertical_id,
         creator_email=creator_email,
-        secondary_email=secondary_email if secondary_email else None,
+        default_notice_period_days=default_notice_period_days,
+        member_emails=member_emails,
     )
-    # Ensure current session email is explicitly linked as owner
-    add_workspace_member(raw_id, user_email, role="owner")
 
     selected_vertical = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
     search_query_string = format_search_query_string(selected_vertical.get("search_keywords", []))
@@ -521,6 +783,106 @@ def onboarding():
         workspace_emails=workspace_emails,
         selected_vertical=selected_vertical,
         search_query_string=search_query_string,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workspace Editing (POST /workspaces/<workspace_id>/edit)
+# ---------------------------------------------------------------------------
+@app.route("/workspaces/<workspace_id>/edit", methods=["POST"])
+def edit_workspace_settings(workspace_id: str):
+    """
+    Update workspace settings:
+    - Workspace name
+    - Default notice period (days)
+    - Authorized member email addresses (add/remove)
+    """
+    user_email = session.get("user_email")
+    if not user_email:
+        flash("Please sign in to modify workspace settings.", "info")
+        return redirect(url_for("auth_login"))
+
+    # Demo workspace cannot be edited
+    if workspace_id == "ws_default" or request.args.get("demo") == "1":
+        flash("Action disabled: Demo workspace cannot be modified.", "error")
+        return redirect(url_for("demo_dashboard"))
+
+    # Enforce access scoping
+    if not can_user_access_workspace(user_email, workspace_id):
+        flash(f"Access denied: You are not authorized to edit workspace '{workspace_id}'.", "error")
+        return redirect(url_for("dashboard"))
+
+    name = (request.form.get("name") or "").strip()
+    raw_notice_days = request.form.get("default_notice_period_days")
+    try:
+        default_notice_period_days = int(raw_notice_days) if raw_notice_days else 30
+    except (ValueError, TypeError):
+        default_notice_period_days = 30
+
+    # Collect member emails from form
+    raw_emails = request.form.getlist("member_emails[]") + request.form.getlist("member_emails")
+    member_emails = []
+    for em in raw_emails:
+        clean_em = em.strip().lower()
+        if clean_em and "@" in clean_em and clean_em not in member_emails:
+            member_emails.append(clean_em)
+
+    # Ensure current user remains authorized
+    if user_email and user_email not in member_emails:
+        member_emails.append(user_email)
+
+    updated_ws = update_workspace(
+        workspace_id=workspace_id,
+        name=name,
+        default_notice_period_days=default_notice_period_days,
+        member_emails=member_emails,
+        current_user_email=user_email,
+    )
+
+    if not updated_ws:
+        flash("Failed to update workspace settings.", "error")
+    else:
+        flash(f"Workspace '{name}' updated successfully.", "success")
+
+    return redirect(url_for("dashboard", workspace_id=workspace_id))
+
+
+# ---------------------------------------------------------------------------
+# Contract Attachment PDF Viewer Route
+# ---------------------------------------------------------------------------
+@app.route("/contracts/<int:contract_id>/attachment", methods=["GET"])
+def view_contract_attachment(contract_id: int):
+    """
+    View or download contract attachment (PDF).
+    Serves existing disk file if present, or dynamically synthesizes a clean PDF
+    using PyMuPDF (fitz) with contract details, risk flags, and change terms.
+    """
+    user_email = session.get("user_email")
+    is_demo = request.args.get("demo") == "1"
+
+    contract = get_contract(contract_id)
+    if not contract:
+        abort(404)
+
+    # In non-demo mode, ensure user is authorized to access the contract's workspace
+    if not is_demo and contract.get("workspace_id") != "ws_default":
+        if not user_email or not can_user_access_workspace(user_email, contract["workspace_id"]):
+            flash("Access denied: You are not authorized to view attachments for this workspace.", "error")
+            return redirect(url_for("dashboard"))
+
+    filename = contract.get("attachment_filename") or f"contract_{contract_id}.pdf"
+    disk_path = contract.get("attachment_path")
+
+    # If file exists on disk, stream it
+    if disk_path and os.path.exists(disk_path):
+        return send_file(disk_path, mimetype="application/pdf", as_attachment=False, download_name=filename)
+
+    # Otherwise, dynamically synthesize a formatted PDF document
+    pdf_bytes = generate_synthetic_contract_pdf(contract, filename)
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 
@@ -637,6 +999,8 @@ def inbound_email_webhook():
             raw_content=combined_text,
             sender_email=parsed["sender_email"],
             email_subject=parsed["subject"],
+            attachment_filename=parsed.get("primary_attachment_filename"),
+            how_to_change_summary=extraction.how_to_change_summary,
         )
     except Exception as e:
         # Handle concurrent insert race condition gracefully
@@ -674,6 +1038,8 @@ def inbound_email_webhook():
         "currency": extraction.currency,
         "key_risk_flags": extraction.key_risk_flags,
         "source_evidence_quote": extraction.source_evidence_quote,
+        "how_to_change_summary": extraction.how_to_change_summary,
+        "attachment_filename": parsed.get("primary_attachment_filename"),
         "is_valid_contract_or_renewal": extraction.is_valid_contract_or_renewal,
     }), 201
 

@@ -35,6 +35,7 @@ class ContractExtractionResult(BaseModel):
     annual_spend_estimate: Optional[float] = Field(None, description="Annualized dollar value numeric.")
     currency: str = Field("USD", description="3-letter ISO currency code.")
     price_escalation_summary: Optional[str] = Field(None, description="Summary of price increase or CPI escalator.")
+    how_to_change_summary: Optional[str] = Field(None, description="Detailed instructions on how to make changes, amend, or cancel/terminate the contract (e.g. certified mail requirement, email address, notice cutoff window, designated contact).")
     coi_or_compliance_expiry: Optional[str] = Field(None, description="ISO-8601 date if COI or insurance expires.")
     key_risk_flags: List[str] = Field(default_factory=list, description="Critical risk bullet points.")
     source_evidence_quote: str = Field(description="Verbatim sentence proving dates or terms.")
@@ -49,7 +50,8 @@ You are an expert B2B contract analyst and procurement risk intelligence assista
 STRICT RULES:
 1. NEVER GUESS DATES: If unstated, set date fields to null and lower confidence_score below 0.65.
 2. CALCULATE DEADLINES: Subtract notice_period_days from expiration_or_renewal_date accurately.
-3. CONFIDENCE SCORING: Score >= 0.85 only when vendor and dates are explicit.
+3. HOW TO MAKE CHANGES: Extract specific instructions on how to make changes, amend, or terminate/cancel the contract (e.g., written notice via certified mail, notice address, designated email, notice window).
+4. CONFIDENCE SCORING: Score >= 0.85 only when vendor and dates are explicit.
 
 {config['llm_domain_hints']}
 ALLOWED CATEGORIES: {config['categories']}

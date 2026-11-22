@@ -285,6 +285,7 @@ def parse_inbound_email(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     # 5. Deterministic Content Hash (SHA-256)
     content_hash = hashlib.sha256(combined_text.encode("utf-8")).hexdigest()
+    primary_attachment = processed_attachment_names[0] if processed_attachment_names else None
 
     return {
         "sender_email": sender_email,
@@ -292,6 +293,7 @@ def parse_inbound_email(payload: Dict[str, Any]) -> Dict[str, Any]:
         "subject": subject,
         "cleaned_body": primary_body,
         "attachment_names": processed_attachment_names,
+        "primary_attachment_filename": primary_attachment,
         "combined_text": combined_text,
         "content_hash": content_hash,
     }

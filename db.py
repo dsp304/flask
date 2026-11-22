@@ -241,10 +241,23 @@ def init_db():
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
 
+    create_user_profiles_sql = """
+    CREATE TABLE IF NOT EXISTS user_profiles (
+        email VARCHAR(255) PRIMARY KEY,
+        full_name VARCHAR(255) NOT NULL,
+        company_name VARCHAR(255) NULL,
+        phone VARCHAR(64) NULL,
+        role_title VARCHAR(128) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_user_profiles_company (company_name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+
     # Seed default workspace if absent
     seed_default_workspace_sql = """
-    INSERT IGNORE INTO workspaces (id, name, vertical_id)
-    VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');
+    INSERT IGNORE INTO workspaces (id, name, vertical_id, default_notice_period_days)
+    VALUES ('ws_default', 'Default Business Workspace', 'general_b2b', 30);
     """
 
     seed_workspace_members_sql = """
@@ -264,7 +277,28 @@ def init_db():
             conn.execute(text(seed_default_workspace_sql))
             conn.execute(text(create_workspace_members_sql))
             conn.execute(text(seed_workspace_members_sql))
-        logger.info("Database initialized successfully with utf8mb4 support.")
+            conn.execute(text(create_user_profiles_sql))
+
+            # Automated safe column migrations
+            try:
+                ws_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
+                if "default_notice_period_days" not in ws_cols:
+                    conn.execute(text("ALTER TABLE workspaces ADD COLUMN default_notice_period_days INT NOT NULL DEFAULT 30;"))
+            except Exception as ex:
+                logger.warning(f"workspaces migration notice: {ex}")
+
+            try:
+                c_cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM contracts")).fetchall()]
+                if "attachment_filename" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_filename VARCHAR(255) NULL;"))
+                if "attachment_path" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_path VARCHAR(500) NULL;"))
+                if "how_to_change_summary" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN how_to_change_summary TEXT NULL;"))
+            except Exception as ex:
+                logger.warning(f"contracts migration notice: {ex}")
+
+        logger.info("Database initialized successfully with utf8mb4 support and dynamic migrations.")
     except Exception as e:
         logger.error(f"Error during database initialization: {e}")
 
@@ -288,11 +322,16 @@ def get_workspace(workspace_id: str) -> Optional[Dict[str, Any]]:
     """Fetch details for a specific workspace."""
     if not workspace_id:
         return None
-    query = text("SELECT id, name, vertical_id, created_at FROM workspaces WHERE id = :workspace_id LIMIT 1")
+    query = text("SELECT id, name, vertical_id, default_notice_period_days, created_at FROM workspaces WHERE id = :workspace_id LIMIT 1")
     try:
         with engine.connect() as conn:
             row = conn.execute(query, {"workspace_id": workspace_id}).mappings().first()
-            return dict(row) if row else None
+            if not row:
+                return None
+            res = dict(row)
+            if res.get("default_notice_period_days") is None:
+                res["default_notice_period_days"] = 30
+            return res
     except Exception as e:
         logger.error(f"Error getting workspace {workspace_id}: {e}")
         return None
@@ -304,42 +343,180 @@ def create_workspace(
     vertical_id: str = "general_b2b",
     creator_email: Optional[str] = None,
     secondary_email: Optional[str] = None,
+    default_notice_period_days: int = 30,
+    member_emails: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Create or update a workspace and record creator and secondary emails in workspace_members.
+    Create or update a workspace and record creator and member emails in workspace_members.
     """
     clean_id = workspace_id.strip().lower()
     clean_name = name.strip() or f"Workspace {clean_id}"
+    notice_days = int(default_notice_period_days or 30)
     
     query = text("""
-        INSERT INTO workspaces (id, name, vertical_id)
-        VALUES (:id, :name, :vertical_id)
-        ON DUPLICATE KEY UPDATE name = :name, vertical_id = :vertical_id, updated_at = CURRENT_TIMESTAMP
+        INSERT INTO workspaces (id, name, vertical_id, default_notice_period_days)
+        VALUES (:id, :name, :vertical_id, :default_notice_period_days)
+        ON DUPLICATE KEY UPDATE 
+            name = :name, 
+            vertical_id = :vertical_id, 
+            default_notice_period_days = :default_notice_period_days,
+            updated_at = CURRENT_TIMESTAMP
     """)
     with engine.begin() as conn:
         conn.execute(query, {
             "id": clean_id,
             "name": clean_name,
-            "vertical_id": vertical_id
+            "vertical_id": vertical_id,
+            "default_notice_period_days": notice_days
         })
 
-    # Record creator email as primary owner
-    if creator_email:
-        add_workspace_member(clean_id, creator_email.strip().lower(), role="owner")
-    
-    # Record secondary email if specified
+    emails_to_add = set()
+    if creator_email and creator_email.strip():
+        emails_to_add.add(creator_email.strip().lower())
     if secondary_email and secondary_email.strip():
-        sec = secondary_email.strip().lower()
-        if not creator_email or sec != creator_email.strip().lower():
-            add_workspace_member(clean_id, sec, role="owner")
+        emails_to_add.add(secondary_email.strip().lower())
+    if member_emails:
+        for em in member_emails:
+            if em and "@" in em:
+                emails_to_add.add(em.strip().lower())
+
+    for em in emails_to_add:
+        add_workspace_member(clean_id, em, role="owner")
 
     associated_emails = get_workspace_emails(clean_id)
     return {
         "id": clean_id,
         "name": clean_name,
         "vertical_id": vertical_id,
+        "default_notice_period_days": notice_days,
         "emails": associated_emails,
     }
+
+
+def update_workspace(
+    workspace_id: str,
+    name: str,
+    default_notice_period_days: int = 30,
+    member_emails: Optional[List[str]] = None,
+    current_user_email: Optional[str] = None,
+) -> bool:
+    """
+    Updates workspace name, default notice period days, and synchronizes member emails.
+    """
+    clean_id = workspace_id.strip().lower()
+    clean_name = name.strip() or f"Workspace {clean_id}"
+    notice_days = int(default_notice_period_days or 30)
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE workspaces 
+                SET name = :name, 
+                    default_notice_period_days = :default_notice_period_days, 
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE id = :id
+            """), {
+                "id": clean_id,
+                "name": clean_name,
+                "default_notice_period_days": notice_days,
+            })
+
+            if member_emails is not None:
+                cleaned_emails = {em.strip().lower() for em in member_emails if em and "@" in em}
+                if current_user_email and current_user_email.strip():
+                    cleaned_emails.add(current_user_email.strip().lower())
+
+                # Upsert all specified member emails
+                for em in cleaned_emails:
+                    conn.execute(text("""
+                        INSERT INTO workspace_members (workspace_id, email, role)
+                        VALUES (:ws_id, :email, 'owner')
+                        ON DUPLICATE KEY UPDATE role = 'owner'
+                    """), {"ws_id": clean_id, "email": em})
+
+                # Delete members that were removed (except preserve current_user_email)
+                if cleaned_emails:
+                    existing_members = conn.execute(
+                        text("SELECT email FROM workspace_members WHERE workspace_id = :ws_id"),
+                        {"ws_id": clean_id}
+                    ).fetchall()
+                    for row in existing_members:
+                        em = row[0].strip().lower()
+                        if em not in cleaned_emails:
+                            conn.execute(text("""
+                                DELETE FROM workspace_members 
+                                WHERE workspace_id = :ws_id AND LOWER(email) = :email
+                            """), {"ws_id": clean_id, "email": em})
+        logger.info(f"Workspace {clean_id} updated successfully (name: {clean_name}, notice: {notice_days}d)")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating workspace {clean_id}: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# User Profile Operations
+# ---------------------------------------------------------------------------
+def get_user_profile(email: str) -> Optional[Dict[str, Any]]:
+    """Retrieve user profile by email."""
+    if not email:
+        return None
+    clean_email = email.strip().lower()
+    query = text("""
+        SELECT email, full_name, company_name, phone, role_title, created_at, updated_at
+        FROM user_profiles
+        WHERE LOWER(email) = :email
+        LIMIT 1
+    """)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(query, {"email": clean_email}).mappings().first()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error fetching profile for {clean_email}: {e}")
+        return None
+
+
+def save_user_profile(
+    email: str,
+    full_name: str,
+    company_name: str = "",
+    phone: str = "",
+    role_title: str = "",
+) -> bool:
+    """Create or update a user profile."""
+    if not email or not full_name:
+        return False
+    clean_email = email.strip().lower()
+    clean_name = full_name.strip()
+    clean_company = (company_name or "").strip()
+    clean_phone = (phone or "").strip()
+    clean_role = (role_title or "").strip()
+
+    query = text("""
+        INSERT INTO user_profiles (email, full_name, company_name, phone, role_title)
+        VALUES (:email, :full_name, :company_name, :phone, :role_title)
+        ON DUPLICATE KEY UPDATE
+            full_name = :full_name,
+            company_name = :company_name,
+            phone = :phone,
+            role_title = :role_title,
+            updated_at = CURRENT_TIMESTAMP
+    """)
+    try:
+        with engine.begin() as conn:
+            conn.execute(query, {
+                "email": clean_email,
+                "full_name": clean_name,
+                "company_name": clean_company,
+                "phone": clean_phone,
+                "role_title": clean_role,
+            })
+        logger.info(f"Saved profile for {clean_email}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving profile for {clean_email}: {e}")
+        return False
 
 
 def add_workspace_member(workspace_id: str, email: str, role: str = "owner") -> bool:
@@ -394,7 +571,7 @@ def get_user_workspaces(email: str) -> List[Dict[str, Any]]:
         return []
     clean_email = email.strip().lower()
     query = text("""
-        SELECT DISTINCT w.id, w.name, w.vertical_id, w.created_at
+        SELECT DISTINCT w.id, w.name, w.vertical_id, w.default_notice_period_days, w.created_at
         FROM workspaces w
         JOIN workspace_members wm ON w.id = wm.workspace_id
         WHERE LOWER(wm.email) = :email
@@ -521,6 +698,9 @@ def insert_contract(
     raw_content: str = "",
     sender_email: str = "",
     email_subject: str = "",
+    attachment_filename: Optional[str] = None,
+    attachment_path: Optional[str] = None,
+    how_to_change_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Insert an extracted contract into the contracts table.
@@ -533,6 +713,10 @@ def insert_contract(
         data = extraction
     else:
         data = vars(extraction)
+
+    att_file = attachment_filename or data.get("attachment_filename")
+    att_path = attachment_path or data.get("attachment_path")
+    how_change = how_to_change_summary or data.get("how_to_change_summary")
 
     insert_sql = text("""
     INSERT INTO contracts (
@@ -549,6 +733,9 @@ def insert_contract(
         annual_spend_estimate,
         currency,
         price_escalation_summary,
+        how_to_change_summary,
+        attachment_filename,
+        attachment_path,
         coi_or_compliance_expiry,
         key_risk_flags,
         source_evidence_quote,
@@ -571,6 +758,9 @@ def insert_contract(
         :annual_spend_estimate,
         :currency,
         :price_escalation_summary,
+        :how_to_change_summary,
+        :attachment_filename,
+        :attachment_path,
         :coi_or_compliance_expiry,
         :key_risk_flags,
         :source_evidence_quote,
@@ -596,6 +786,9 @@ def insert_contract(
         "annual_spend_estimate": data.get("annual_spend_estimate"),
         "currency": data.get("currency") or "USD",
         "price_escalation_summary": data.get("price_escalation_summary"),
+        "how_to_change_summary": how_change,
+        "attachment_filename": att_file,
+        "attachment_path": att_path,
         "coi_or_compliance_expiry": sanitize_date_str(data.get("coi_or_compliance_expiry")),
         "key_risk_flags": json.dumps(data.get("key_risk_flags") or []),
         "source_evidence_quote": data.get("source_evidence_quote"),
@@ -799,6 +992,11 @@ def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bo
     else:
         auto_renewal_term_months = existing.get("auto_renewal_term_months")
 
+    if "how_to_change_summary" in updates:
+        how_to_change_summary = updates.get("how_to_change_summary")
+    else:
+        how_to_change_summary = existing.get("how_to_change_summary")
+
     update_sql = text("""
         UPDATE contracts SET
             vendor_name = COALESCE(NULLIF(:vendor_name, ''), vendor_name),
@@ -809,6 +1007,7 @@ def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bo
             calculated_cancellation_deadline = :cancellation_deadline,
             annual_spend_estimate = :spend_estimate,
             auto_renewal_term_months = :auto_renewal_term_months,
+            how_to_change_summary = :how_to_change_summary,
             status = 'active',
             confidence_score = 1.0,
             is_valid_contract_or_renewal = 1,
@@ -826,6 +1025,7 @@ def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bo
         "cancellation_deadline": cancellation_deadline,
         "spend_estimate": spend_estimate,
         "auto_renewal_term_months": auto_renewal_term_months,
+        "how_to_change_summary": how_to_change_summary,
     }
 
     try:
@@ -1162,13 +1362,13 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
         if existing:
             ws_id = existing["id"]
             conn.execute(
-                text("UPDATE workspaces SET name = 'Apex Property Management', vertical_id = 'property_mgmt' WHERE id = :id"),
+                text("UPDATE workspaces SET name = 'Apex Property Management', vertical_id = 'property_mgmt', default_notice_period_days = 45 WHERE id = :id"),
                 {"id": ws_id}
             )
         else:
             ws_id = "ws_apex_property_management"
             conn.execute(
-                text("INSERT INTO workspaces (id, name, vertical_id, inbound_email_slug) VALUES (:id, 'Apex Property Management', 'property_mgmt', 'apex-property-management')"),
+                text("INSERT INTO workspaces (id, name, vertical_id, default_notice_period_days, inbound_email_slug) VALUES (:id, 'Apex Property Management', 'property_mgmt', 45, 'apex-property-management')"),
                 {"id": ws_id}
             )
 
@@ -1205,6 +1405,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                 "annual_spend_estimate": 18600.00,
                 "currency": "USD",
                 "price_escalation_summary": "Annual 5.0% price escalator or CPI, applied automatically upon anniversary date.",
+                "how_to_change_summary": "Changes, scope reductions, or contract termination require written notice submitted via certified mail (return receipt requested) to Schindler Elevator Corp, Attn: Regional Contract Administration, 20 Whippany Rd, Morristown, NJ 07960, exactly 60 days prior to contract anniversary date.",
+                "attachment_filename": "Schindler_Elevator_Service_Agreement_2026.pdf",
                 "coi_or_compliance_expiry": today + timedelta(days=90),
                 "key_risk_flags": ["Certified mail required for cancellation", "60-day strict notice window", "5% annual compound escalator"],
                 "source_evidence_quote": "This Agreement shall automatically renew for successive one (1) year terms unless either party gives written notice of non-renewal by certified mail at least sixty (60) days prior to the expiration date.",
@@ -1224,6 +1426,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                 "annual_spend_estimate": 28400.00,
                 "currency": "USD",
                 "price_escalation_summary": "Uncapped quarterly fuel surcharge and environmental regulatory recovery fee adjustments.",
+                "how_to_change_summary": "To cancel or renegotiate pickup frequency, written notification must be transmitted via certified mail to Waste Management Contract Services (Attn: Commercial Accounts) at least 90 days before the 36-month term expiration. Surcharges cannot be modified mid-term without a formal addendum signed by VP of Commercial Ops.",
+                "attachment_filename": "WM_Commercial_Waste_Compactor_Agreement.pdf",
                 "coi_or_compliance_expiry": today + timedelta(days=15),
                 "key_risk_flags": ["36-month evergreen lock-in trap", "90-day certified mail notice required", "Uncapped fuel surcharges", "Expiring COI within 15 days"],
                 "source_evidence_quote": "Customer agrees that unless written notice of cancellation is received via certified mail at least 90 days prior to expiration, this agreement auto-renews for an additional 36-month term.",
@@ -1243,6 +1447,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                 "annual_spend_estimate": 21500.00,
                 "currency": "USD",
                 "price_escalation_summary": "Annual rate adjustment pegged to CPI, capped at maximum 3.5% annually.",
+                "how_to_change_summary": "Service frequency adjustments, equipment additions/removals, or notice of termination must be sent in writing 30 days prior to annual renewal to service@tranecommercial.com or submitted through the Trane Connect portal referencing Agreement #TR-4402.",
+                "attachment_filename": "Trane_HVAC_Chiller_Service_Plan.pdf",
                 "coi_or_compliance_expiry": today + timedelta(days=180),
                 "key_risk_flags": ["30-day notice cutoff", "After-hours emergency labor surcharges"],
                 "source_evidence_quote": "Preventive HVAC maintenance services renew annually unless written notice of termination is provided 30 days prior to expiration.",
@@ -1262,6 +1468,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                 "annual_spend_estimate": 15200.00,
                 "currency": "USD",
                 "price_escalation_summary": "Fixed seasonal rate; salt, calcium chloride, and emergency push events billed separately per incident.",
+                "how_to_change_summary": "Winter storm response thresholds and seasonal turf care amendments must be agreed upon in writing by November 1st. Non-renewal requires 45 days written notice directed to commercial@brightview.com.",
+                "attachment_filename": "BrightView_Grounds_Snow_Service_Contract.pdf",
                 "coi_or_compliance_expiry": today + timedelta(days=40),
                 "key_risk_flags": ["Seasonal snow removal clause", "45-day cancellation notice"],
                 "source_evidence_quote": "Agreement auto-renews for successive 1-year terms unless either party gives written notice 45 days prior to November 30.",
@@ -1281,6 +1489,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                 "annual_spend_estimate": 8900.00,
                 "currency": "USD",
                 "price_escalation_summary": "4.0% annual compounding rate adjustment on monitoring fees.",
+                "how_to_change_summary": "Emergency contact list updates, inspection rescheduling, or cancellation requests require 60 days advance written notice to lifesafety@jci.com. System disconnection requires local Fire Marshal sign-off certification.",
+                "attachment_filename": "JohnsonControls_Fire_Alarm_Monitoring_Agreement.pdf",
                 "coi_or_compliance_expiry": today + timedelta(days=240),
                 "key_risk_flags": ["24-month multi-year rollover", "Municipal fire code compliance requirement"],
                 "source_evidence_quote": "Central station monitoring and life-safety inspection shall renew for additional 24-month periods unless terminated 60 days before contract anniversary.",
@@ -1302,6 +1512,7 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                     category, expiration_or_renewal_date, notice_period_days,
                     calculated_cancellation_deadline, auto_renewal_term_months,
                     annual_spend_estimate, currency, price_escalation_summary,
+                    how_to_change_summary, attachment_filename,
                     coi_or_compliance_expiry, key_risk_flags, source_evidence_quote,
                     confidence_score, is_valid_contract_or_renewal, sender_email,
                     email_subject, raw_content
@@ -1310,6 +1521,7 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                     :category, :expiration_or_renewal_date, :notice_period_days,
                     :calculated_cancellation_deadline, :auto_renewal_term_months,
                     :annual_spend_estimate, :currency, :price_escalation_summary,
+                    :how_to_change_summary, :attachment_filename,
                     :coi_or_compliance_expiry, :key_risk_flags, :source_evidence_quote,
                     :confidence_score, 1, :sender_email,
                     :email_subject, :raw_content
@@ -1324,6 +1536,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                     auto_renewal_term_months = VALUES(auto_renewal_term_months),
                     annual_spend_estimate = VALUES(annual_spend_estimate),
                     price_escalation_summary = VALUES(price_escalation_summary),
+                    how_to_change_summary = VALUES(how_to_change_summary),
+                    attachment_filename = VALUES(attachment_filename),
                     coi_or_compliance_expiry = VALUES(coi_or_compliance_expiry),
                     key_risk_flags = VALUES(key_risk_flags),
                     source_evidence_quote = VALUES(source_evidence_quote),
@@ -1344,6 +1558,8 @@ def seed_apex_property_management_contracts(user_email: Optional[str] = None) ->
                 "annual_spend_estimate": c["annual_spend_estimate"],
                 "currency": c["currency"],
                 "price_escalation_summary": c["price_escalation_summary"],
+                "how_to_change_summary": c["how_to_change_summary"],
+                "attachment_filename": c["attachment_filename"],
                 "coi_or_compliance_expiry": c["coi_or_compliance_expiry"].isoformat(),
                 "key_risk_flags": json.dumps(c["key_risk_flags"]),
                 "source_evidence_quote": c["source_evidence_quote"],

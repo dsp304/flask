@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL DEFAULT 'Default Workspace',
     vertical_id VARCHAR(64) NOT NULL DEFAULT 'general_b2b',
+    default_notice_period_days INT NOT NULL DEFAULT 30,
     inbound_email_slug VARCHAR(64) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -28,6 +29,9 @@ CREATE TABLE IF NOT EXISTS contracts (
     annual_spend_estimate DECIMAL(12, 2) NULL,
     currency VARCHAR(10) DEFAULT 'USD',
     price_escalation_summary TEXT NULL,
+    how_to_change_summary TEXT NULL,
+    attachment_filename VARCHAR(255) NULL,
+    attachment_path VARCHAR(500) NULL,
     coi_or_compliance_expiry DATE NULL,
     key_risk_flags JSON NULL,
     source_evidence_quote TEXT NULL,
@@ -93,6 +97,18 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_job_ws (workspace_id),
     INDEX idx_job_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- User Profiles table for initial sign-up information and user profile management
+CREATE TABLE IF NOT EXISTS user_profiles (
+    email VARCHAR(255) PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    company_name VARCHAR(255) NULL,
+    phone VARCHAR(64) NULL,
+    role_title VARCHAR(128) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_profiles_company (company_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Workspace Members table for multi-email scoping & ownership enforcement (Task 7)

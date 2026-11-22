@@ -155,41 +155,82 @@
         <h2 class="text-lg font-bold text-slate-900 dark:text-white">1. Workspace Details</h2>
       </div>
       
-      <div>
-        <label for="name" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-          Company / Workspace Name *
-        </label>
-        <input type="text" id="name" name="name" required placeholder="e.g. Apex Property Management" class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="sm:col-span-2">
+          <label for="name" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            Company / Workspace Name *
+          </label>
+          <input type="text" id="name" name="name" required placeholder="e.g. Apex Property Management" class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white">
+        </div>
+
+        <div>
+          <label for="default_notice_period_days" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            Default Notice Period *
+          </label>
+          <div class="relative">
+            <input 
+              type="number" 
+              id="default_notice_period_days" 
+              name="default_notice_period_days" 
+              value="30" 
+              min="1" 
+              max="365" 
+              required 
+              class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white">
+            <span class="absolute right-3.5 top-2.5 text-xs text-slate-400 font-medium">days</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Standard notice required (customizable per contract).</p>
+        </div>
       </div>
 
       <!-- Email Scoping Fields -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+      <div class="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
         <div>
-          <label for="creator_email" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Primary Email (Signed In)
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            Authorized Workspace Emails
           </label>
+          <p class="text-xs text-slate-500 mb-2">
+            Add team members or secondary email addresses authorized to access this workspace.
+          </p>
+        </div>
+
+        <!-- Primary User Email -->
+        <div>
+          <label class="block text-[11px] font-medium text-slate-500 mb-1">Primary Email (Signed In)</label>
           <input 
             type="email" 
             id="creator_email" 
             name="creator_email" 
             value="{{ session.get('user_email', 'admin@contractwatchdog.com') }}" 
-            required 
-            class="w-full text-sm px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
-          <p class="text-[11px] text-slate-400 mt-1">Defaults to your sign-in email.</p>
+            readonly 
+            class="w-full text-sm px-3.5 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 font-mono cursor-not-allowed">
         </div>
 
-        <div>
-          <label for="secondary_email" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Additional Email (Optional)
-          </label>
-          <input 
-            type="email" 
-            id="secondary_email" 
-            name="secondary_email" 
-            placeholder="e.g. billing@subsidiary.com" 
-            class="w-full text-sm px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
-          <p class="text-[11px] text-slate-400 mt-1">Authorize another email to view this workspace.</p>
+        <!-- Dynamic Additional Emails Container -->
+        <div id="additional-emails-container" class="space-y-2">
+          <div class="flex items-center space-x-2">
+            <input 
+              type="email" 
+              name="additional_emails[]" 
+              placeholder="e.g. accounting@company.com" 
+              class="flex-1 text-sm px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
+            <button 
+              type="button" 
+              onclick="removeEmailRow(this)" 
+              class="px-2.5 py-2 text-slate-400 hover:text-rose-600 text-sm font-bold transition" 
+              title="Remove email">&times;</button>
+          </div>
         </div>
+
+        <button 
+          type="button" 
+          onclick="addEmailRow()" 
+          class="inline-flex items-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition space-x-1">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          <span>+ Add another email address</span>
+        </button>
       </div>
 
     </div>
@@ -265,6 +306,38 @@
     navigator.clipboard.writeText(text.trim()).then(() => {
       alert('Copied to clipboard!');
     });
+  }
+
+  function addEmailRow() {
+    const container = document.getElementById('additional-emails-container');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.className = 'flex items-center space-x-2';
+    div.innerHTML = `
+      <input 
+        type="email" 
+        name="additional_emails[]" 
+        placeholder="e.g. teammate@company.com" 
+        class="flex-1 text-sm px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 dark:text-white font-mono">
+      <button 
+        type="button" 
+        onclick="removeEmailRow(this)" 
+        class="px-2.5 py-2 text-slate-400 hover:text-rose-600 text-sm font-bold transition" 
+        title="Remove email">&times;</button>
+    `;
+    container.appendChild(div);
+  }
+
+  function removeEmailRow(btn) {
+    const row = btn.parentElement;
+    const container = document.getElementById('additional-emails-container');
+    if (container && container.children.length > 1) {
+      row.remove();
+    } else {
+      // If it's the last input, just clear its value
+      const input = row.querySelector('input');
+      if (input) input.value = '';
+    }
   }
 </script>
 {% endblock %}
