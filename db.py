@@ -227,10 +227,31 @@ def init_db():
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
 
+    create_workspace_members_sql = """
+    CREATE TABLE IF NOT EXISTS workspace_members (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        workspace_id VARCHAR(64) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        role VARCHAR(32) NOT NULL DEFAULT 'owner',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uq_workspace_member_email UNIQUE (workspace_id, email),
+        INDEX idx_wm_email (email),
+        INDEX idx_wm_workspace (workspace_id),
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+
     # Seed default workspace if absent
     seed_default_workspace_sql = """
     INSERT IGNORE INTO workspaces (id, name, vertical_id)
     VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');
+    """
+
+    seed_workspace_members_sql = """
+    INSERT IGNORE INTO workspace_members (workspace_id, email, role)
+    VALUES 
+        ('ws_default', 'demo@contractwatchdog.com', 'owner'),
+        ('ws_default', 'admin@contractwatchdog.com', 'owner');
     """
 
     try:
@@ -241,6 +262,8 @@ def init_db():
             conn.execute(text(create_alert_logs_sql))
             conn.execute(text(create_ingestion_jobs_sql))
             conn.execute(text(seed_default_workspace_sql))
+            conn.execute(text(create_workspace_members_sql))
+            conn.execute(text(seed_workspace_members_sql))
         logger.info("Database initialized successfully with utf8mb4 support.")
     except Exception as e:
         logger.error(f"Error during database initialization: {e}")
@@ -275,8 +298,16 @@ def get_workspace(workspace_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def create_workspace(workspace_id: str, name: str, vertical_id: str = "general_b2b") -> Dict[str, Any]:
-    """Create or update a workspace."""
+def create_workspace(
+    workspace_id: str,
+    name: str,
+    vertical_id: str = "general_b2b",
+    creator_email: Optional[str] = None,
+    secondary_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create or update a workspace and record creator and secondary emails in workspace_members.
+    """
     clean_id = workspace_id.strip().lower()
     clean_name = name.strip() or f"Workspace {clean_id}"
     
@@ -291,7 +322,131 @@ def create_workspace(workspace_id: str, name: str, vertical_id: str = "general_b
             "name": clean_name,
             "vertical_id": vertical_id
         })
-    return {"id": clean_id, "name": clean_name, "vertical_id": vertical_id}
+
+    # Record creator email as primary owner
+    if creator_email:
+        add_workspace_member(clean_id, creator_email.strip().lower(), role="owner")
+    
+    # Record secondary email if specified
+    if secondary_email and secondary_email.strip():
+        sec = secondary_email.strip().lower()
+        if not creator_email or sec != creator_email.strip().lower():
+            add_workspace_member(clean_id, sec, role="owner")
+
+    associated_emails = get_workspace_emails(clean_id)
+    return {
+        "id": clean_id,
+        "name": clean_name,
+        "vertical_id": vertical_id,
+        "emails": associated_emails,
+    }
+
+
+def add_workspace_member(workspace_id: str, email: str, role: str = "owner") -> bool:
+    """Associate an authorized email with a workspace."""
+    if not workspace_id or not email:
+        return False
+    clean_ws = workspace_id.strip().lower()
+    clean_email = email.strip().lower()
+    query = text("""
+        INSERT INTO workspace_members (workspace_id, email, role)
+        VALUES (:workspace_id, :email, :role)
+        ON DUPLICATE KEY UPDATE role = :role
+    """)
+    try:
+        with engine.begin() as conn:
+            conn.execute(query, {
+                "workspace_id": clean_ws,
+                "email": clean_email,
+                "role": role,
+            })
+        return True
+    except Exception as e:
+        logger.error(f"Failed to add member {clean_email} to workspace {clean_ws}: {e}")
+        return False
+
+
+def get_workspace_emails(workspace_id: str) -> List[str]:
+    """Retrieve all authorized emails for a given workspace."""
+    if not workspace_id:
+        return []
+    query = text("""
+        SELECT DISTINCT email FROM workspace_members
+        WHERE workspace_id = :workspace_id
+        ORDER BY created_at ASC
+    """)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"workspace_id": workspace_id.strip().lower()}).fetchall()
+            return [r[0] for r in rows if r[0]]
+    except Exception as e:
+        logger.error(f"Error fetching emails for workspace {workspace_id}: {e}")
+        return []
+
+
+def get_user_workspaces(email: str) -> List[Dict[str, Any]]:
+    """
+    Retrieve workspaces that the given user email is authorized to access.
+    Joins workspaces and workspace_members on lowercase email.
+    """
+    if not email:
+        return []
+    clean_email = email.strip().lower()
+    query = text("""
+        SELECT DISTINCT w.id, w.name, w.vertical_id, w.created_at
+        FROM workspaces w
+        JOIN workspace_members wm ON w.id = wm.workspace_id
+        WHERE LOWER(wm.email) = :email
+        ORDER BY w.created_at ASC
+    """)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"email": clean_email}).mappings().all()
+            workspaces = [dict(r) for r in rows]
+
+            # If user is admin/demo and ws_default isn't returned, ensure it is added
+            if clean_email in ("admin@contractwatchdog.com", "demo@contractwatchdog.com"):
+                if not any(ws["id"] == "ws_default" for ws in workspaces):
+                    default_ws = get_workspace("ws_default")
+                    if default_ws:
+                        workspaces.insert(0, default_ws)
+
+            return workspaces
+    except Exception as e:
+        logger.error(f"Error fetching workspaces for user {clean_email}: {e}")
+        return []
+
+
+def can_user_access_workspace(email: str, workspace_id: str) -> bool:
+    """
+    Enforce multi-email workspace access control.
+    Returns True if the email is registered in workspace_members for workspace_id,
+    or if user is demo/admin on ws_default.
+    """
+    if not email or not workspace_id:
+        return False
+    clean_email = email.strip().lower()
+    clean_ws = workspace_id.strip().lower()
+
+    # Built-in demo/admin access for default workspace
+    if clean_ws == "ws_default" and clean_email in ("admin@contractwatchdog.com", "demo@contractwatchdog.com"):
+        return True
+
+    query = text("""
+        SELECT 1 FROM workspace_members
+        WHERE workspace_id = :workspace_id AND LOWER(email) = :email
+        LIMIT 1
+    """)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(query, {
+                "workspace_id": clean_ws,
+                "email": clean_email
+            }).fetchone()
+            return row is not None
+    except Exception as e:
+        logger.error(f"Error checking access for {clean_email} to {clean_ws}: {e}")
+        return False
 
 
 def get_workspace_vertical(workspace_id: str) -> str:

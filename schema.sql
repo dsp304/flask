@@ -1,5 +1,6 @@
 -- =============================================================================
 -- Contract Renewal Watchdog - MySQL Schema (utf8mb4)
+-- Task 7: Multi-Email Workspace Members & Scoped Ownership
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -94,6 +95,26 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
     INDEX idx_job_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Workspace Members table for multi-email scoping & ownership enforcement (Task 7)
+CREATE TABLE IF NOT EXISTS workspace_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    workspace_id VARCHAR(64) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    role VARCHAR(32) NOT NULL DEFAULT 'owner', -- 'owner', 'member', 'viewer'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_workspace_member_email UNIQUE (workspace_id, email),
+    INDEX idx_wm_email (email),
+    INDEX idx_wm_workspace (workspace_id),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Initial Seed Data
 INSERT IGNORE INTO workspaces (id, name, vertical_id)
 VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');
+
+-- Backfill initial demo/admin permissions for default workspace
+INSERT IGNORE INTO workspace_members (workspace_id, email, role)
+VALUES ('ws_default', 'demo@contractwatchdog.com', 'owner');
+
+INSERT IGNORE INTO workspace_members (workspace_id, email, role)
+VALUES ('ws_default', 'admin@contractwatchdog.com', 'owner');
