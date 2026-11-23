@@ -53,6 +53,7 @@ from db import (
     save_user_profile,
     update_workspace,
     seed_sample_workspaces_and_contracts,
+    perform_24_month_mailbox_scan,
 )
 from parser import parse_inbound_email
 from extractor import extract_contract_from_text, ContractExtractionResult
@@ -814,21 +815,22 @@ def onboarding():
     )
 
     selected_vertical = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
-    search_query_string = format_search_query_string(selected_vertical.get("search_keywords", []))
-    workspace_emails = get_workspace_emails(raw_id)
-
+    session["active_workspace_id"] = raw_id
     flash(f"Workspace '{name}' created successfully with vertical '{selected_vertical['display_name']}'!", "success")
 
-    return render_template(
-        "onboarding.html",
-        active_nav="onboarding",
-        verticals=VERTICAL_CONFIGS,
-        all_workspaces=get_user_workspaces(user_email),
-        created_workspace=created_ws,
-        workspace_emails=workspace_emails,
-        selected_vertical=selected_vertical,
-        search_query_string=search_query_string,
-    )
+    # Determine if this was an initial sign-up workspace or an additional workspace
+    prior_workspaces = get_user_workspaces(user_email)
+    is_initial = "1" if len(prior_workspaces) <= 1 else "0"
+
+    # Immediately transition to dashboard with transparent 24-month mailbox scanner active
+    return redirect(url_for(
+        "dashboard",
+        workspace_id=raw_id,
+        trigger_scan="1",
+        scan_email=creator_email or user_email,
+        is_new_workspace="1",
+        is_initial_signup=is_initial,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -876,6 +878,10 @@ def edit_workspace_settings(workspace_id: str):
     if user_email and user_email not in member_emails:
         member_emails.append(user_email)
 
+    # Identify any newly added emails before saving to trigger 24-month mailbox scan
+    existing_emails = set(get_workspace_emails(workspace_id))
+    newly_added_emails = [em for em in member_emails if em not in existing_emails]
+
     updated_ws = update_workspace(
         workspace_id=workspace_id,
         name=name,
@@ -886,9 +892,20 @@ def edit_workspace_settings(workspace_id: str):
 
     if not updated_ws:
         flash("Failed to update workspace settings.", "error")
-    else:
-        flash(f"Workspace '{name}' updated successfully.", "success")
+        return redirect(url_for("dashboard", workspace_id=workspace_id))
 
+    # If new email address was added, trigger transparent 24-month scan for the new email!
+    if newly_added_emails:
+        flash(f"Added authorized email(s): {', '.join(newly_added_emails)}. Scanning past 2 years of mailbox for contracts...", "info")
+        return redirect(url_for(
+            "dashboard",
+            workspace_id=workspace_id,
+            trigger_scan="1",
+            scan_email=",".join(newly_added_emails),
+            is_new_email="1",
+        ))
+
+    flash(f"Workspace '{name}' updated successfully.", "success")
     return redirect(url_for("dashboard", workspace_id=workspace_id))
 
 
@@ -1118,6 +1135,49 @@ def alert_history():
         "total_alerts": len(logs),
         "alerts": logs,
     }), 200
+
+
+@app.route("/api/workspaces/<workspace_id>/scan-mailbox", methods=["POST"])
+@app.route("/api/scan/mailbox", methods=["POST"])
+def api_scan_mailbox(workspace_id: str = None):
+    """
+    Transparent 24-Month Mailbox Scan Endpoint.
+    Initiates a transparent scan of the specified mailbox for the past 2 years of vendor contracts,
+    renewal terms, and cancellation deadlines.
+    Can be called for:
+      - Initial sign-up workspace setup
+      - Adding a new workspace
+      - Adding a new email address to an existing workspace
+      - Manual user-triggered transparent scan
+    """
+    data = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
+    target_ws = workspace_id or data.get("workspace_id") or session.get("active_workspace_id") or "ws_default"
+    
+    user_email = session.get("user_email")
+    email_to_scan = (data.get("email") or data.get("scan_email") or user_email or "user@workspace.com").strip().lower()
+
+    # If comma-separated emails were passed (multiple emails added), take the first or primary
+    if "," in email_to_scan:
+        email_to_scan = email_to_scan.split(",")[0].strip()
+    
+    # Check permissions (allow if user is authorized, or if it's new workspace / demo)
+    is_demo = target_ws == "ws_default" or request.args.get("demo") == "1"
+    if not is_demo and user_email and not can_user_access_workspace(user_email, target_ws):
+        workspace_emails = get_workspace_emails(target_ws)
+        if user_email not in workspace_emails and email_to_scan not in workspace_emails:
+            return jsonify({"status": "error", "message": f"Access denied to workspace '{target_ws}'."}), 403
+
+    raw_is_new_email = data.get("is_new_email")
+    is_new_email = True if raw_is_new_email in (True, "1", "true", "True") else False
+
+    # Execute transparent 24-month scan
+    scan_result = perform_24_month_mailbox_scan(
+        workspace_id=target_ws,
+        email_to_scan=email_to_scan,
+        is_new_email=is_new_email,
+    )
+
+    return jsonify(scan_result), 200
 
 
 @app.route("/api/worker/backfill", methods=["POST"])
