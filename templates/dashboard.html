@@ -230,153 +230,258 @@
 
   <!-- SECTION: ACTIVE CONTRACTS (Ordered by Cancellation Deadline ASC) -->
   <section class="space-y-4">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h2 class="text-xl font-bold text-slate-900 dark:text-white">Active Monitored Contracts</h2>
         <p class="text-xs text-slate-500">Sorted by earliest cancellation notice deadline first</p>
       </div>
-      <div class="text-xs text-slate-500">
-        {{ active_contracts|length }} contracts tracked
+      <div class="flex items-center space-x-3">
+        <span class="text-xs text-slate-500">
+          {{ active_contracts|length }} contracts tracked
+        </span>
+        <!-- Responsive View Toggle: Cards vs Compact Table -->
+        <div class="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+          <button 
+            type="button" 
+            id="view-toggle-cards" 
+            onclick="switchContractView('cards')" 
+            class="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm transition">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span>Cards</span>
+          </button>
+          <button 
+            type="button" 
+            id="view-toggle-table" 
+            onclick="switchContractView('table')" 
+            class="flex items-center space-x-1.5 px-3 py-1 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            <span>Table</span>
+          </button>
+        </div>
       </div>
     </div>
 
     {% if active_contracts %}
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-sm">
-          <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 uppercase font-semibold">
-            <tr>
-              <th scope="col" class="py-3.5 px-4 sm:px-6">Cancellation Deadline</th>
-              <th scope="col" class="py-3.5 px-4">Vendor & Agreement</th>
-              <th scope="col" class="py-3.5 px-4">Category</th>
-              <th scope="col" class="py-3.5 px-4">Notice Required</th>
-              <th scope="col" class="py-3.5 px-4">Contract Expiration</th>
-              <th scope="col" class="py-3.5 px-4">Annual Spend</th>
-              <th scope="col" class="py-3.5 px-4 sm:px-6 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-            {% for c in active_contracts %}
-            <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
-              
-              <!-- Cancellation Deadline & Urgency Badge -->
-              <td class="py-4 px-4 sm:px-6 whitespace-nowrap">
-                <div class="flex flex-col">
-                  {% if c.calculated_cancellation_deadline %}
-                    <span class="font-bold text-slate-900 dark:text-white text-base">
-                      {{ c.calculated_cancellation_deadline }}
-                    </span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border mt-1 w-max {{ c.badge_class }}">
-                      {{ c.badge_text }}
-                    </span>
-                  {% else %}
-                    <span class="text-slate-400 italic">No deadline set</span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border mt-1 w-max {{ c.badge_class }}">
-                      {{ c.badge_text }}
-                    </span>
-                  {% endif %}
-                </div>
-              </td>
 
-              <!-- Vendor & Title -->
-              <td class="py-4 px-4">
-                <div class="font-semibold text-slate-900 dark:text-white">{{ c.vendor_name or "Unknown Vendor" }}</div>
-                <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">{{ c.contract_title or "Standard Agreement" }}</div>
+    <!-- 1. RESPONSIVE CARD VIEW (Default: Fluid, zero horizontal scroll on all screen sizes) -->
+    <div id="contracts-card-view" class="space-y-4">
+      {% for c in active_contracts %}
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md transition space-y-4">
+        
+        <!-- Header: Cancellation Badge, Vendor, Agreement, PDF link & Edit button -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex flex-wrap items-center gap-2">
+            {% if c.calculated_cancellation_deadline %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border {{ c.badge_class }}">
+                {{ c.badge_text }}
+              </span>
+            {% endif %}
 
-                <!-- Attachment PDF link -->
-                {% if c.attachment_filename %}
-                  <div class="mt-1">
-                    <a href="/contracts/{{ c.id }}/attachment" target="_blank" class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800 transition shadow-sm" title="View attached PDF contract">
-                      <svg class="w-3 h-3 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
-                      </svg>
-                      <span>{{ c.attachment_filename }}</span>
-                      <span class="text-[9px] text-rose-500 font-bold">&nearr;</span>
-                    </a>
-                  </div>
-                {% endif %}
+            <span class="font-bold text-base text-slate-900 dark:text-white">
+              {{ c.vendor_name or "Unknown Vendor" }}
+            </span>
+            <span class="text-slate-300 dark:text-slate-700">·</span>
+            <span class="text-sm font-medium text-slate-700 dark:text-slate-300">
+              {{ c.contract_title or "Standard Agreement" }}
+            </span>
 
-                <!-- How to make changes summary -->
-                {% if c.how_to_change_summary %}
-                  <div class="mt-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700 max-w-sm">
-                    <span class="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1 text-[10px] uppercase tracking-wide">
-                      <svg class="w-3 h-3 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                      <span>How to Make Changes:</span>
-                    </span>
-                    <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">{{ c.how_to_change_summary }}</p>
-                  </div>
-                {% endif %}
+            {% if c.category %}
+              <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                {{ c.category }}
+              </span>
+            {% endif %}
 
-                {% if c.key_risk_flags %}
-                  <div class="flex flex-wrap gap-1 mt-1.5">
-                    {% for flag in c.key_risk_flags[:2] %}
-                      <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium truncate max-w-[200px]" title="{{ flag }}">
-                        ⚠️ {{ flag }}
-                      </span>
-                    {% endfor %}
-                    {% if c.key_risk_flags|length > 2 %}
-                      <span class="text-[10px] text-slate-400">+{{ c.key_risk_flags|length - 2 }} more</span>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              </td>
+            {% if c.attachment_filename %}
+              <a href="/contracts/{{ c.id }}/attachment" target="_blank" class="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800 transition shadow-sm" title="View attached PDF contract">
+                <svg class="w-3.5 h-3.5 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
+                </svg>
+                <span>{{ c.attachment_filename }}</span>
+                <span class="text-[9px] text-rose-500 font-bold">&nearr;</span>
+              </a>
+            {% endif %}
+          </div>
 
-              <!-- Category -->
-              <td class="py-4 px-4 whitespace-nowrap">
-                <span class="px-2 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                  {{ c.category or "General" }}
-                </span>
-              </td>
+          <!-- Edit Details Button -->
+          <div class="flex items-center space-x-2 shrink-0">
+            <button 
+              type="button" 
+              onclick="openReviewModal({{ c.id }})" 
+              class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 transition shadow-sm">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              <span>Edit Details</span>
+            </button>
+          </div>
+        </div>
 
-              <!-- Notice Period -->
-              <td class="py-4 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300">
-                {% if c.notice_period_days %}
-                  <strong class="font-semibold">{{ c.notice_period_days }}</strong> days prior
-                {% else %}
-                  <span class="text-slate-400">&mdash;</span>
-                {% endif %}
-              </td>
+        <!-- Metric Grid (2 cols on mobile, 4 cols on tablet & desktop) -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div class="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <div class="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Cancellation Deadline</div>
+            <div class="font-bold text-sm text-slate-900 dark:text-white mt-0.5">
+              {{ c.calculated_cancellation_deadline or "None set" }}
+            </div>
+          </div>
 
-              <!-- Expiration Date -->
-              <td class="py-4 px-4 whitespace-nowrap text-slate-700 dark:text-slate-300">
-                {% if c.expiration_or_renewal_date %}
-                  <div>{{ c.expiration_or_renewal_date }}</div>
-                  {% if c.auto_renewal_term_months %}
-                    <div class="text-[11px] text-slate-500">+{{ c.auto_renewal_term_months }}m rollover</div>
-                  {% endif %}
-                {% else %}
-                  <span class="text-slate-400">&mdash;</span>
-                {% endif %}
-              </td>
+          <div class="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <div class="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Notice Window</div>
+            <div class="font-semibold text-sm text-slate-800 dark:text-slate-200 mt-0.5">
+              {% if c.notice_period_days %}
+                {{ c.notice_period_days }} days prior
+              {% else %}
+                <span class="text-slate-400">&mdash;</span>
+              {% endif %}
+            </div>
+          </div>
 
-              <!-- Annual Spend -->
-              <td class="py-4 px-4 whitespace-nowrap">
-                {% if c.annual_spend_estimate %}
-                  <span class="font-semibold text-slate-900 dark:text-white">${{ "{:,.2f}".format(c.annual_spend_estimate) }}</span>
-                  <span class="text-xs text-slate-400 font-mono">{{ c.currency or "USD" }}</span>
-                {% else %}
-                  <span class="text-slate-400">&mdash;</span>
-                {% endif %}
-              </td>
+          <div class="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <div class="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Contract Expiration</div>
+            <div class="font-semibold text-sm text-slate-800 dark:text-slate-200 mt-0.5">
+              {{ c.expiration_or_renewal_date or "—" }}
+              {% if c.auto_renewal_term_months %}
+                <span class="text-[11px] font-normal text-slate-500">({{ c.auto_renewal_term_months }}m rollover)</span>
+              {% endif %}
+            </div>
+          </div>
 
-              <!-- Actions -->
-              <td class="py-4 px-4 sm:px-6 whitespace-nowrap text-right">
-                <button 
-                  type="button" 
-                  onclick="openReviewModal({{ c.id }})" 
-                  class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline">
-                  Edit Details
-                </button>
-              </td>
+          <div class="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <div class="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Annual Spend</div>
+            <div class="font-bold text-sm text-slate-900 dark:text-white mt-0.5">
+              {% if c.annual_spend_estimate %}
+                ${{ "{:,.2f}".format(c.annual_spend_estimate) }} <span class="text-[11px] font-normal text-slate-400">{{ c.currency or "USD" }}</span>
+              {% else %}
+                <span class="text-slate-400">&mdash;</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
 
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <!-- How to Make Changes Callout -->
+        {% if c.how_to_change_summary %}
+        <div class="text-xs bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-200 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800/60">
+          <div class="font-bold text-indigo-900 dark:text-indigo-300 flex items-center space-x-1.5 text-[11px] uppercase tracking-wider mb-1">
+            <svg class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+            <span>How to Make Changes:</span>
+          </div>
+          <p class="text-[12px] leading-relaxed text-indigo-950 dark:text-indigo-200">{{ c.how_to_change_summary }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Key Risk Flags -->
+        {% if c.key_risk_flags %}
+        <div class="flex flex-wrap gap-1.5 pt-0.5">
+          {% for flag in c.key_risk_flags %}
+            <span class="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              ⚠️ {{ flag }}
+            </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
       </div>
+      {% endfor %}
     </div>
+
+
+    <!-- 2. STREAMLINED TABLE VIEW (Zero horizontal scroll, responsive columns) -->
+    <div id="contracts-table-view" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+      <table class="w-full text-left text-sm table-auto">
+        <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 uppercase font-semibold">
+          <tr>
+            <th scope="col" class="py-3 px-3 sm:px-4">Deadline</th>
+            <th scope="col" class="py-3 px-3 sm:px-4">Vendor & Agreement</th>
+            <th scope="col" class="py-3 px-3 hidden md:table-cell">Category</th>
+            <th scope="col" class="py-3 px-3 hidden sm:table-cell">Notice</th>
+            <th scope="col" class="py-3 px-3 hidden lg:table-cell">Expiration</th>
+            <th scope="col" class="py-3 px-3">Spend</th>
+            <th scope="col" class="py-3 px-3 sm:px-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+          {% for c in active_contracts %}
+          <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+            
+            <!-- Deadline -->
+            <td class="py-3.5 px-3 sm:px-4">
+              <div class="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                {{ c.calculated_cancellation_deadline or "—" }}
+              </div>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border mt-0.5 {{ c.badge_class }}">
+                {{ c.badge_text }}
+              </span>
+            </td>
+
+            <!-- Vendor & Title -->
+            <td class="py-3.5 px-3 sm:px-4">
+              <div class="font-semibold text-slate-900 dark:text-white text-xs sm:text-sm leading-snug">{{ c.vendor_name or "Unknown Vendor" }}</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{{ c.contract_title or "Standard Agreement" }}</div>
+
+              {% if c.attachment_filename %}
+                <div class="mt-1">
+                  <a href="/contracts/{{ c.id }}/attachment" target="_blank" class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800 transition">
+                    <svg class="w-3 h-3 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
+                    </svg>
+                    <span>PDF &nearr;</span>
+                  </a>
+                </div>
+              {% endif %}
+            </td>
+
+            <!-- Category -->
+            <td class="py-3.5 px-3 hidden md:table-cell text-xs">
+              <span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px]">
+                {{ c.category or "General" }}
+              </span>
+            </td>
+
+            <!-- Notice -->
+            <td class="py-3.5 px-3 hidden sm:table-cell text-xs text-slate-700 dark:text-slate-300">
+              {% if c.notice_period_days %}
+                {{ c.notice_period_days }}d
+              {% else %}
+                <span class="text-slate-400">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Expiration -->
+            <td class="py-3.5 px-3 hidden lg:table-cell text-xs text-slate-700 dark:text-slate-300">
+              {{ c.expiration_or_renewal_date or "—" }}
+            </td>
+
+            <!-- Spend -->
+            <td class="py-3.5 px-3 text-xs">
+              {% if c.annual_spend_estimate %}
+                <div class="font-semibold text-slate-900 dark:text-white">${{ "{:,.0f}".format(c.annual_spend_estimate) }}</div>
+              {% else %}
+                <span class="text-slate-400">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Actions -->
+            <td class="py-3.5 px-3 sm:px-4 text-right">
+              <button 
+                type="button" 
+                onclick="openReviewModal({{ c.id }})" 
+                class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline">
+                Edit
+              </button>
+            </td>
+
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
     {% else %}
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center shadow-sm">
       <div class="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 mx-auto mb-4">
@@ -934,5 +1039,50 @@
       deadlineInput.value = yyyy;
     }
   }
+
+  function switchContractView(mode) {
+    const cardView = document.getElementById('contracts-card-view');
+    const tableView = document.getElementById('contracts-table-view');
+    const btnCards = document.getElementById('view-toggle-cards');
+    const btnTable = document.getElementById('view-toggle-table');
+
+    if (!cardView || !tableView || !btnCards || !btnTable) return;
+
+    const activeClasses = ['bg-white', 'dark:bg-slate-900', 'text-indigo-600', 'dark:text-indigo-400', 'shadow-sm'];
+    const inactiveClasses = ['text-slate-600', 'dark:text-slate-400', 'hover:text-slate-900', 'dark:hover:text-white'];
+
+    if (mode === 'table') {
+      cardView.classList.add('hidden');
+      tableView.classList.remove('hidden');
+
+      btnCards.classList.remove(...activeClasses);
+      btnCards.classList.add(...inactiveClasses);
+
+      btnTable.classList.remove(...inactiveClasses);
+      btnTable.classList.add(...activeClasses);
+
+      try { localStorage.setItem('contracts_view_pref', 'table'); } catch (e) {}
+    } else {
+      tableView.classList.add('hidden');
+      cardView.classList.remove('hidden');
+
+      btnTable.classList.remove(...activeClasses);
+      btnTable.classList.add(...inactiveClasses);
+
+      btnCards.classList.remove(...inactiveClasses);
+      btnCards.classList.add(...activeClasses);
+
+      try { localStorage.setItem('contracts_view_pref', 'cards'); } catch (e) {}
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      const savedPref = localStorage.getItem('contracts_view_pref');
+      if (savedPref === 'table') {
+        switchContractView('table');
+      }
+    } catch (e) {}
+  });
 </script>
 {% endblock %}
