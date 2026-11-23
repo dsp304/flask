@@ -373,6 +373,40 @@
           </div>
         </div>
 
+        <!-- Calendar Reminder Scheduled Banner (Automated for Critical Stage) -->
+        {% if c.calendar_reminder_set %}
+        <div class="p-3 sm:p-3.5 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs shadow-sm">
+          <div class="flex items-start space-x-2.5">
+            <div class="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-700 dark:text-emerald-300 shrink-0 text-sm font-bold">
+              📅
+            </div>
+            <div class="space-y-0.5">
+              <div class="flex items-center space-x-2">
+                <span class="font-bold text-emerald-900 dark:text-emerald-200 text-xs sm:text-sm">Calendar Reminder Scheduled</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100">Auto-Set</span>
+              </div>
+              <p class="text-[12px] text-emerald-800 dark:text-emerald-300 leading-snug">
+                Reminder setup on <strong>{{ c.calendar_reminder_set_at_display }}</strong> using primary login email (<strong>{{ c.calendar_reminder_target_email }}</strong>).
+                Scheduled in calendar for cancellation deadline: <strong>{{ c.calculated_cancellation_deadline }}</strong> (9:00 AM).
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+            <a href="/contracts/{{ c.id }}/calendar.ics" class="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-slate-700 transition shadow-sm" title="Download .ics Calendar Event">
+              <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>.ICS File</span>
+            </a>
+            {% if c.google_calendar_url %}
+            <a href="{{ c.google_calendar_url }}" target="_blank" class="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm" title="Add directly to Google Calendar">
+              <span>Google Cal &nearr;</span>
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
         <!-- Metric Grid (2 cols on mobile, 4 cols on tablet & desktop) -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
           <div class="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
@@ -470,6 +504,14 @@
               <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border mt-0.5 {{ c.badge_class }}">
                 {{ c.badge_text }}
               </span>
+              {% if c.calendar_reminder_set %}
+                <div class="mt-1">
+                  <span class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Reminder setup on {{ c.calendar_reminder_set_at_display }} for {{ c.calendar_reminder_target_email }}">
+                    <span>📅</span>
+                    <span>Reminder set: {{ c.calendar_reminder_set_at_short or c.calendar_reminder_set_at_display }}</span>
+                  </span>
+                </div>
+              {% endif %}
             </td>
 
             <!-- Vendor & Title -->
@@ -521,12 +563,19 @@
 
             <!-- Actions -->
             <td class="py-3.5 px-3 sm:px-4 text-right">
-              <button 
-                type="button" 
-                onclick="openReviewModal({{ c.id }})" 
-                class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline">
-                Edit
-              </button>
+              <div class="flex items-center justify-end space-x-2">
+                {% if c.calendar_reminder_set %}
+                <a href="/contracts/{{ c.id }}/calendar.ics" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300" title="Download .ics Calendar Event">
+                  📅 .ICS
+                </a>
+                {% endif %}
+                <button 
+                  type="button" 
+                  onclick="openReviewModal({{ c.id }})" 
+                  class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline">
+                  Edit
+                </button>
+              </div>
             </td>
 
           </tr>
@@ -695,6 +744,20 @@
               </div>
               <a id="modal-attachment-link" href="#" target="_blank" class="px-3 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 rounded font-semibold text-xs border border-rose-200 dark:border-rose-800 transition">
                 View PDF &nearr;
+              </a>
+            </div>
+
+            <!-- Calendar Reminder Callout in Modal -->
+            <div id="modal-calendar-box" class="hidden p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
+              <div class="flex items-center space-x-2.5">
+                <span class="text-base">📅</span>
+                <div>
+                  <div class="text-xs font-bold text-emerald-900 dark:text-emerald-200">Calendar Reminder Scheduled</div>
+                  <div class="text-[11px] text-emerald-700 dark:text-emerald-400" id="modal-calendar-text">Scheduled for primary login email</div>
+                </div>
+              </div>
+              <a id="modal-calendar-link" href="#" class="px-2.5 py-1 bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 rounded font-bold text-xs border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 transition shadow-sm">
+                .ICS Event
               </a>
             </div>
 
@@ -1471,6 +1534,20 @@
       attBox.classList.remove('hidden');
     } else {
       attBox.classList.add('hidden');
+    }
+
+    // Handle Calendar reminder box
+    const calBox = document.getElementById('modal-calendar-box');
+    const calText = document.getElementById('modal-calendar-text');
+    const calLink = document.getElementById('modal-calendar-link');
+    if (calBox && calText) {
+      if (item.calendar_reminder_set) {
+        calText.textContent = `Setup on ${item.calendar_reminder_set_at_display || 'recently'} for ${item.calendar_reminder_target_email || 'primary user'}. Cutoff: ${item.calculated_cancellation_deadline || ''}`;
+        if (calLink) calLink.href = `/contracts/${item.id}/calendar.ics`;
+        calBox.classList.remove('hidden');
+      } else {
+        calBox.classList.add('hidden');
+      }
     }
 
     // Populate Left Evidence Box

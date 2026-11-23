@@ -300,6 +300,16 @@ def init_db():
                     conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_path VARCHAR(500) NULL;"))
                 if "how_to_change_summary" not in c_cols:
                     conn.execute(text("ALTER TABLE contracts ADD COLUMN how_to_change_summary TEXT NULL;"))
+                if "calendar_reminder_set" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_set BOOLEAN NOT NULL DEFAULT FALSE;"))
+                if "calendar_reminder_set_at" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_set_at TIMESTAMP NULL;"))
+                if "calendar_reminder_target_email" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_target_email VARCHAR(255) NULL;"))
+                if "calendar_reminder_date" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_date DATE NULL;"))
+                if "calendar_reminder_status" not in c_cols:
+                    conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_status VARCHAR(64) NOT NULL DEFAULT 'scheduled';"))
         except Exception as ex:
             logger.warning(f"contracts migration notice: {ex}")
 
@@ -1064,6 +1074,58 @@ def _hydrate_contract_record(record: Dict[str, Any]) -> Dict[str, Any]:
         item["badge_text"] = "No Deadline Stated"
         item["badge_class"] = "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
 
+    # Calendar reminder formatting
+    rem_set = bool(item.get("calendar_reminder_set"))
+    rem_set_at = item.get("calendar_reminder_set_at")
+    rem_target_email = item.get("calendar_reminder_target_email")
+    rem_date = item.get("calendar_reminder_date")
+
+    item["calendar_reminder_set"] = rem_set
+    item["calendar_reminder_target_email"] = rem_target_email or ""
+
+    if rem_set_at:
+        dt = None
+        if isinstance(rem_set_at, (datetime, date)):
+            dt = rem_set_at
+        elif isinstance(rem_set_at, str):
+            try:
+                dt = datetime.fromisoformat(rem_set_at.replace("Z", ""))
+            except Exception:
+                try:
+                    dt = datetime.strptime(rem_set_at[:19], "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    dt = None
+
+        if dt:
+            item["calendar_reminder_set_at_display"] = dt.strftime("%b %d, %Y at %I:%M %p")
+            item["calendar_reminder_set_at_short"] = dt.strftime("%b %d, %Y")
+        else:
+            item["calendar_reminder_set_at_display"] = str(rem_set_at)[:16]
+            item["calendar_reminder_set_at_short"] = str(rem_set_at)[:10]
+    else:
+        item["calendar_reminder_set_at_display"] = None
+        item["calendar_reminder_set_at_short"] = None
+
+    if rem_date:
+        if isinstance(rem_date, (datetime, date)):
+            item["calendar_reminder_date_display"] = rem_date.strftime("%b %d, %Y")
+        else:
+            item["calendar_reminder_date_display"] = str(rem_date)[:10]
+    else:
+        item["calendar_reminder_date_display"] = str(item.get("calculated_cancellation_deadline") or "")
+
+    # Web calendar and .ics URLs
+    try:
+        from calendar_service import generate_web_calendar_links
+        cal_links = generate_web_calendar_links(item, rem_target_email or "reminders@contractwatchdog.com")
+        item["google_calendar_url"] = cal_links.get("google")
+        item["outlook_calendar_url"] = cal_links.get("outlook")
+        item["ics_url"] = cal_links.get("ics")
+    except Exception:
+        item["google_calendar_url"] = None
+        item["outlook_calendar_url"] = None
+        item["ics_url"] = f"/contracts/{item.get('id')}/calendar.ics"
+
     return item
 
 
@@ -1124,6 +1186,67 @@ def get_contract(contract_id: int) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching contract {contract_id}: {e}")
         return None
+
+
+def update_contract_calendar_reminder(
+    contract_id: int,
+    target_email: str,
+    reminder_date: Optional[Any] = None,
+    reminder_status: str = "scheduled",
+    reminder_set_at: Optional[Any] = None,
+) -> bool:
+    """
+    Record or update calendar reminder setup for a contract.
+    Persists setup timestamp, target email, scheduled deadline date, and status.
+    """
+    if not contract_id:
+        return False
+    set_at = reminder_set_at or datetime.now()
+    clean_email = (target_email or "").strip().lower()
+
+    clean_date = None
+    if reminder_date:
+        if isinstance(reminder_date, (datetime, date)):
+            clean_date = reminder_date.strftime("%Y-%m-%d") if isinstance(reminder_date, date) else reminder_date.date().strftime("%Y-%m-%d")
+        else:
+            clean_date = str(reminder_date)[:10]
+
+    try:
+        with engine.begin() as conn:
+            # Ensure columns exist dynamically
+            cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM contracts")).fetchall()]
+            if "calendar_reminder_set" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_set BOOLEAN NOT NULL DEFAULT FALSE;"))
+            if "calendar_reminder_set_at" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_set_at TIMESTAMP NULL;"))
+            if "calendar_reminder_target_email" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_target_email VARCHAR(255) NULL;"))
+            if "calendar_reminder_date" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_date DATE NULL;"))
+            if "calendar_reminder_status" not in cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_status VARCHAR(64) NOT NULL DEFAULT 'scheduled';"))
+
+            update_sql = text("""
+                UPDATE contracts SET
+                    calendar_reminder_set = 1,
+                    calendar_reminder_set_at = :set_at,
+                    calendar_reminder_target_email = :target_email,
+                    calendar_reminder_date = :reminder_date,
+                    calendar_reminder_status = :status,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+            """)
+            conn.execute(update_sql, {
+                "id": contract_id,
+                "set_at": set_at,
+                "target_email": clean_email,
+                "reminder_date": clean_date,
+                "status": reminder_status or "scheduled",
+            })
+            return True
+    except Exception as e:
+        logger.error(f"Error updating calendar reminder for contract {contract_id}: {e}")
+        return False
 
 
 def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bool:
@@ -1883,6 +2006,16 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                 conn.execute(text("ALTER TABLE contracts ADD COLUMN attachment_path VARCHAR(500) NULL;"))
             if "how_to_change_summary" not in c_cols:
                 conn.execute(text("ALTER TABLE contracts ADD COLUMN how_to_change_summary TEXT NULL;"))
+            if "calendar_reminder_set" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_set BOOLEAN NOT NULL DEFAULT FALSE;"))
+            if "calendar_reminder_set_at" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_set_at TIMESTAMP NULL;"))
+            if "calendar_reminder_target_email" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_target_email VARCHAR(255) NULL;"))
+            if "calendar_reminder_date" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_date DATE NULL;"))
+            if "calendar_reminder_status" not in c_cols:
+                conn.execute(text("ALTER TABLE contracts ADD COLUMN calendar_reminder_status VARCHAR(64) NOT NULL DEFAULT 'scheduled';"))
         except Exception as c_ex:
             logger.warning(f"Ensuring contract columns in seed: {c_ex}")
 
@@ -1927,6 +2060,24 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                 fp_raw = f"{ws_id}_{clean_vendor}"
                 fp_hash = hashlib.sha256(fp_raw.encode("utf-8")).hexdigest()[:32]
 
+                deadline_val = c.get("calculated_cancellation_deadline")
+                days_left = (deadline_val - today).days if deadline_val else None
+                is_crit = bool(days_left is not None and days_left <= 45)
+                target_login_email = (user_email or "").strip().lower() or "admin@contractwatchdog.com"
+
+                if is_crit:
+                    cal_set = 1
+                    cal_set_at = datetime.now() - timedelta(hours=2)
+                    cal_target = target_login_email
+                    cal_date = deadline_val.isoformat() if hasattr(deadline_val, "isoformat") else str(deadline_val)
+                    cal_status = "scheduled"
+                else:
+                    cal_set = 0
+                    cal_set_at = None
+                    cal_target = None
+                    cal_date = None
+                    cal_status = "none"
+
                 insert_sql = text("""
                     INSERT INTO contracts (
                         workspace_id, fingerprint_hash, status, vendor_name, contract_title,
@@ -1936,7 +2087,10 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                         how_to_change_summary, attachment_filename,
                         coi_or_compliance_expiry, key_risk_flags, source_evidence_quote,
                         confidence_score, is_valid_contract_or_renewal, sender_email,
-                        email_subject, raw_content
+                        email_subject, raw_content,
+                        calendar_reminder_set, calendar_reminder_set_at,
+                        calendar_reminder_target_email, calendar_reminder_date,
+                        calendar_reminder_status
                     ) VALUES (
                         :workspace_id, :fingerprint_hash, :status, :vendor_name, :contract_title,
                         :category, :expiration_or_renewal_date, :notice_period_days,
@@ -1945,7 +2099,10 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                         :how_to_change_summary, :attachment_filename,
                         :coi_or_compliance_expiry, :key_risk_flags, :source_evidence_quote,
                         :confidence_score, 1, :sender_email,
-                        :email_subject, :raw_content
+                        :email_subject, :raw_content,
+                        :calendar_reminder_set, :calendar_reminder_set_at,
+                        :calendar_reminder_target_email, :calendar_reminder_date,
+                        :calendar_reminder_status
                     )
                     ON DUPLICATE KEY UPDATE
                         status = VALUES(status),
@@ -1968,6 +2125,11 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                         sender_email = VALUES(sender_email),
                         email_subject = VALUES(email_subject),
                         raw_content = VALUES(raw_content),
+                        calendar_reminder_set = VALUES(calendar_reminder_set),
+                        calendar_reminder_set_at = VALUES(calendar_reminder_set_at),
+                        calendar_reminder_target_email = VALUES(calendar_reminder_target_email),
+                        calendar_reminder_date = VALUES(calendar_reminder_date),
+                        calendar_reminder_status = VALUES(calendar_reminder_status),
                         updated_at = CURRENT_TIMESTAMP
                 """)
 
@@ -1994,6 +2156,11 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                     "sender_email": c["sender_email"],
                     "email_subject": c["email_subject"],
                     "raw_content": f"Executed agreement record for {c['vendor_name']} ({c['contract_title']}). Renewal term: {c['auto_renewal_term_months']} months. Cancellation notice window: {c['notice_period_days']} days prior to deadline.",
+                    "calendar_reminder_set": cal_set,
+                    "calendar_reminder_set_at": cal_set_at,
+                    "calendar_reminder_target_email": cal_target,
+                    "calendar_reminder_date": cal_date,
+                    "calendar_reminder_status": cal_status,
                 })
                 contracts_seeded.append(c["vendor_name"])
                 total_inserted += 1

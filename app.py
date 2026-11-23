@@ -17,6 +17,7 @@ from flask import (
     abort,
     send_file,
     Response,
+    make_response,
 )
 from dotenv import load_dotenv
 
@@ -56,6 +57,11 @@ from db import (
     perform_24_month_mailbox_scan,
     get_workspace_plan,
     set_workspace_plan,
+)
+from calendar_service import (
+    auto_setup_critical_contract_calendar_reminders,
+    setup_calendar_reminder_for_contract,
+    generate_calendar_ics,
 )
 from parser import parse_inbound_email
 from extractor import extract_contract_from_text, ContractExtractionResult
@@ -128,8 +134,18 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
     vertical_info = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
     search_query_string = format_search_query_string(vertical_info.get("search_keywords", []))
 
-    active_contracts, review_contracts = get_dashboard_contracts(workspace_id)
     workspace_emails = get_workspace_emails(workspace_id) if not is_demo else []
+
+    # Use the primary email that the user used to login for setting up the calendar reminder
+    primary_login_email = session.get("user_email") or (workspace_emails[0] if workspace_emails else "demo@contractwatchdog.com")
+
+    # Once the contract is in the critical stage, automatically setup a reminder in the calendar
+    try:
+        auto_setup_critical_contract_calendar_reminders(workspace_id, primary_login_email=primary_login_email)
+    except Exception as cal_err:
+        logger.warning(f"Auto calendar reminder setup notice for workspace {workspace_id}: {cal_err}")
+
+    active_contracts, review_contracts = get_dashboard_contracts(workspace_id)
 
     total_spend = sum(
         float(c.get("annual_spend_estimate") or 0.0)
@@ -143,7 +159,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
     combined_contracts = []
     for c in (review_contracts + active_contracts):
         c_copy = dict(c)
-        for k in ("expiration_or_renewal_date", "calculated_cancellation_deadline", "coi_or_compliance_expiry", "created_at", "updated_at"):
+        for k in ("expiration_or_renewal_date", "calculated_cancellation_deadline", "coi_or_compliance_expiry", "created_at", "updated_at", "calendar_reminder_set_at", "calendar_reminder_date"):
             if c_copy.get(k) is not None:
                 c_copy[k] = str(c_copy[k])
         if c_copy.get("annual_spend_estimate") is not None:
@@ -733,6 +749,13 @@ def approve_contract(contract_id: int):
     vendor = data.get("vendor_name") or f"Contract #{contract_id}"
     logger.info(f"Approved contract {contract_id} ({vendor}) in workspace {contract['workspace_id']} by {user_email}")
 
+    # If approved contract is in critical stage, automatically schedule calendar reminder
+    try:
+        primary_login_email = user_email or session.get("user_email") or "admin@contractwatchdog.com"
+        auto_setup_critical_contract_calendar_reminders(contract["workspace_id"], primary_login_email=primary_login_email)
+    except Exception as cal_ex:
+        logger.warning(f"Calendar reminder setup after contract approval: {cal_ex}")
+
     if request.is_json:
         return jsonify({
             "status": "success",
@@ -1007,6 +1030,54 @@ def view_contract_attachment(contract_id: int):
         mimetype="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Contract Calendar Reminder Routes (.ICS Download & Manual Sync)
+# ---------------------------------------------------------------------------
+@app.route("/contracts/<int:contract_id>/calendar.ics", methods=["GET"])
+def download_contract_calendar_ics(contract_id: int):
+    """
+    Generate and serve an RFC 5545 iCalendar (.ics) event for the contract cancellation deadline.
+    Users can open or import this into Apple Calendar, Google Calendar, Outlook, etc.
+    """
+    contract = get_contract(contract_id)
+    if not contract:
+        abort(404)
+
+    target_email = session.get("user_email") or contract.get("calendar_reminder_target_email") or "reminders@contractwatchdog.com"
+    ics_body = generate_calendar_ics(contract, target_email=target_email)
+
+    clean_vendor = re.sub(r"[^\w\-_]", "_", contract.get("vendor_name") or "Contract")
+    filename = f"Cutoff_Reminder_{clean_vendor}_{contract_id}.ics"
+
+    response = make_response(ics_body)
+    response.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@app.route("/contracts/<int:contract_id>/setup-calendar-reminder", methods=["POST"])
+def setup_contract_calendar_reminder_action(contract_id: int):
+    """
+    Manual trigger to set up or refresh calendar reminder for a critical contract.
+    Uses the primary email that the user used to login.
+    """
+    user_email = session.get("user_email")
+    contract = get_contract(contract_id)
+    if not contract:
+        abort(404)
+
+    ws_id = contract.get("workspace_id")
+    target_email = user_email or (get_workspace_emails(ws_id)[0] if get_workspace_emails(ws_id) else "admin@contractwatchdog.com")
+
+    res = setup_calendar_reminder_for_contract(contract_id, target_email=target_email, workspace_id=ws_id)
+    if res.get("success"):
+        flash(f"📅 Calendar reminder successfully scheduled for {contract.get('vendor_name')} ({target_email})!", "success")
+    else:
+        flash(f"Could not set up calendar reminder: {res.get('error', 'Unknown error')}", "error")
+
+    return redirect(url_for("dashboard", workspace_id=ws_id))
 
 
 # ---------------------------------------------------------------------------
