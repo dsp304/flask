@@ -519,6 +519,9 @@ def user_profile():
     if vertical_id not in VERTICAL_CONFIGS:
         vertical_id = "general_b2b"
 
+    if request.args.get("skip") == "1":
+        return redirect(url_for("profile_skip", vertical=vertical_id))
+
     if request.method == "POST":
         full_name = (request.form.get("full_name") or "").strip()
         company_name = (request.form.get("company_name") or "").strip()
@@ -573,6 +576,32 @@ def user_profile():
         is_setup=is_setup,
         vertical_id=vertical_id,
     )
+
+
+@app.route("/profile/skip", methods=["GET"])
+def profile_skip():
+    """
+    Handles user skipping profile completion:
+    - If user already has a workspace (and contracts) setup, take user to dashboard with their default workspace.
+    - If user does not have workspace setup, take user to create workspace (/onboarding).
+    """
+    user_email = session.get("user_email")
+    if not user_email:
+        flash("Please sign in to continue.", "info")
+        return redirect(url_for("auth_login"))
+
+    vertical_id = (request.args.get("vertical") or "general_b2b").strip()
+    if vertical_id not in VERTICAL_CONFIGS:
+        vertical_id = "general_b2b"
+
+    workspaces = get_user_workspaces(user_email)
+    if workspaces:
+        default_ws = workspaces[0]["id"]
+        session["active_workspace_id"] = default_ws
+        return redirect(url_for("dashboard", workspace_id=default_ws))
+    else:
+        flash("Please set up your workspace to start monitoring contracts.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
 
 
 @app.route("/auth/logout", methods=["GET", "POST"])
