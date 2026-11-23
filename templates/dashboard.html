@@ -248,9 +248,21 @@
         <p class="text-xs text-slate-500">Sorted by earliest cancellation notice deadline first</p>
       </div>
       <div class="flex items-center space-x-3">
-        <span class="text-xs text-slate-500">
-          {{ active_contracts|length }} contracts tracked
-        </span>
+        {% if plan_tier == 'pro' %}
+          <span class="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+            <span>⭐ Pro &middot; {{ active_contracts|length }} tracked</span>
+          </span>
+        {% else %}
+          <button 
+            type="button" 
+            onclick="openPricingModal()" 
+            class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition"
+            title="View Plan Details">
+            <span>Free Tier: {{ active_contracts|length }}/5 tracked</span>
+            <span class="text-indigo-400">&bull;</span>
+            <span class="font-bold underline text-indigo-600 dark:text-indigo-400">Upgrade</span>
+          </button>
+        {% endif %}
         <!-- Responsive View Toggle: Cards vs Compact Table -->
         <div class="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
           <button 
@@ -276,6 +288,35 @@
         </div>
       </div>
     </div>
+
+    <!-- Free Tier Upgrade Banner (Shown if workspace is on Free plan and not demo) -->
+    {% if plan_tier != 'pro' and not is_demo %}
+    <div class="bg-gradient-to-r from-indigo-50/80 via-white to-indigo-50/50 dark:from-indigo-950/40 dark:via-slate-900 dark:to-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
+      <div class="flex items-start space-x-3.5">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div class="space-y-0.5">
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-sm text-slate-900 dark:text-white">Free Starter Plan: {{ active_contracts|length }} of 5 Contracts Used</span>
+            <span class="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">Current</span>
+          </div>
+          <p class="text-xs text-slate-600 dark:text-slate-400">
+            Upgrade to Pro ($49/mo) to unlock unlimited monitored contracts, multi-property workspaces, and certified mail cancellation tools.
+          </p>
+        </div>
+      </div>
+      <button 
+        type="button" 
+        onclick="openPricingModal()" 
+        class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center space-x-1.5 self-start sm:self-auto">
+        <span>Upgrade to Pro ($49/mo)</span>
+        <span>&rarr;</span>
+      </button>
+    </div>
+    {% endif %}
 
     {% if active_contracts %}
 
@@ -679,6 +720,191 @@
   </div>
 </div>
 
+<!-- ========================================================================= -->
+<!-- IN-APP PRICING & PLAN UPGRADE MODAL -->
+<!-- ========================================================================= -->
+<div id="inapp-pricing-modal" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="pricing-modal-title" role="dialog" aria-modal="true">
+  <!-- Backdrop -->
+  <div class="fixed inset-0 bg-slate-900/70 backdrop-blur-md transition-opacity" onclick="closePricingModal()"></div>
+
+  <div class="flex min-h-full items-center justify-center p-4 sm:p-6">
+    <div class="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all p-6 sm:p-8 space-y-6">
+      
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div>
+          <div class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 mb-1">
+            <span>Workspace Subscription</span>
+          </div>
+          <h3 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white" id="pricing-modal-title">
+            Choose the Right Plan for {{ current_workspace.name }}
+          </h3>
+          <p class="text-xs text-slate-500">
+            Start free, then unlock unlimited contracts and multi-property monitoring as you grow.
+          </p>
+        </div>
+        <button type="button" onclick="closePricingModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl font-bold leading-none">&times;</button>
+      </div>
+
+      <!-- Pricing Comparison Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+        
+        <!-- Tier 1: Free Starter -->
+        <div class="bg-slate-50/70 dark:bg-slate-800/50 rounded-2xl border {% if plan_tier != 'pro' %}border-indigo-500 ring-2 ring-indigo-500/20{% else %}border-slate-200 dark:border-slate-700{% endif %} p-5 sm:p-6 flex flex-col justify-between space-y-5">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Starter Tier</span>
+              {% if plan_tier != 'pro' %}
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                CURRENT PLAN
+              </span>
+              {% endif %}
+            </div>
+            <h4 class="text-xl font-bold text-slate-900 dark:text-white">Free Forever</h4>
+            <div class="flex items-baseline space-x-1">
+              <span class="text-3xl font-extrabold text-slate-900 dark:text-white">$0</span>
+              <span class="text-xs text-slate-500">/ forever</span>
+            </div>
+            <p class="text-xs text-slate-500">
+              For single-location workspaces and tracking your first key vendor agreements.
+            </p>
+
+            <!-- Usage Progress Indicator -->
+            <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5 text-xs">
+              <div class="flex items-center justify-between font-semibold">
+                <span class="text-slate-600 dark:text-slate-400">Contracts Usage:</span>
+                <span class="text-indigo-600 dark:text-indigo-400 font-mono">{{ active_contracts|length }} / 5 Used</span>
+              </div>
+              <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-indigo-600 h-1.5 rounded-full" style="width: {{ [(active_contracts|length / 5) * 100, 100]|min }}%"></div>
+              </div>
+            </div>
+
+            <!-- Feature Checklist -->
+            <ul class="space-y-2 pt-2 text-xs text-slate-600 dark:text-slate-400">
+              <li class="flex items-center space-x-2">
+                <span class="text-emerald-500 font-bold">&check;</span>
+                <span>1 Active Workspace</span>
+              </li>
+              <li class="flex items-center space-x-2">
+                <span class="text-emerald-500 font-bold">&check;</span>
+                <span>1 Connected Mailbox (Google/Microsoft)</span>
+              </li>
+              <li class="flex items-center space-x-2">
+                <span class="text-emerald-500 font-bold">&check;</span>
+                <span>Full 24-Month Mailbox Scan</span>
+              </li>
+              <li class="flex items-center space-x-2">
+                <span class="text-emerald-500 font-bold">&check;</span>
+                <span><strong>Up to 5 Active Contracts Monitored</strong></span>
+              </li>
+              <li class="flex items-center space-x-2">
+                <span class="text-emerald-500 font-bold">&check;</span>
+                <span>Standard 30-Day Email Deadlines</span>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            {% if plan_tier != 'pro' %}
+            <button type="button" disabled class="w-full py-2.5 rounded-xl text-xs font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 cursor-not-allowed">
+              Current Plan
+            </button>
+            {% else %}
+            <form method="POST" action="/workspaces/{{ current_workspace.id }}/downgrade">
+              <button type="submit" class="w-full py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition">
+                Switch to Free Plan
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Tier 2: Pro Plan -->
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl border-2 border-indigo-600 dark:border-indigo-500 p-5 sm:p-6 flex flex-col justify-between space-y-5 shadow-lg">
+          <div class="absolute -top-3 right-5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-600 text-white shadow-sm">
+            Recommended &middot; 25x ROI
+          </div>
+
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Pro Tier</span>
+              {% if plan_tier == 'pro' %}
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                ACTIVE PLAN
+              </span>
+              {% endif %}
+            </div>
+            <h4 class="text-xl font-bold text-slate-900 dark:text-white">Pro Plan</h4>
+            <div class="flex items-baseline space-x-1">
+              <span class="text-3xl font-extrabold text-slate-900 dark:text-white">$49</span>
+              <span class="text-xs text-slate-500">/ month</span>
+            </div>
+            <p class="text-xs text-slate-500">
+              For commercial property managers, clinics, MSPs, and growing portfolios.
+            </p>
+
+            <!-- Feature Checklist -->
+            <ul class="space-y-2 pt-2 text-xs text-slate-700 dark:text-slate-300">
+              <li class="flex items-start space-x-2">
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">&check;</span>
+                <span><strong>Unlimited Workspaces</strong> (Multi-property & multi-location)</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">&check;</span>
+                <span><strong>Unlimited Authorized Team Emails</strong></span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">&check;</span>
+                <span><strong>Unlimited Contracts Monitored</strong> (No caps)</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">&check;</span>
+                <span><strong>Custom 45, 60, & 90-Day Early Warning Deadlines</strong></span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">&check;</span>
+                <span><strong>Certified Mail Cancellation Instructions</strong> & Address Verification</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">&check;</span>
+                <span><strong>Certificate of Insurance (COI) Expiration Alerts</strong></span>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            {% if plan_tier == 'pro' %}
+            <button type="button" disabled class="w-full py-3 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-800 cursor-default flex items-center justify-center space-x-1.5">
+              <span>&check; Active Pro Subscription</span>
+            </button>
+            {% else %}
+            <form method="POST" action="/workspaces/{{ current_workspace.id }}/upgrade">
+              <button type="submit" class="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/25 transition flex items-center justify-center space-x-1.5">
+                <span>Upgrade to Pro ($49/mo)</span>
+                <span>&rarr;</span>
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="pt-2 flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 dark:border-slate-800">
+        <div class="flex items-center space-x-2">
+          <span>🔒 Cancel or switch plans anytime</span>
+        </div>
+        <button type="button" onclick="closePricingModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-semibold transition">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 {% if not is_demo and current_workspace.id != 'ws_default' and current_workspace.name != 'Demo Workspace' %}
 <!-- ========================================================================= -->
 <!-- EMAIL SETUP & FORWARDING MODAL -->
@@ -1017,6 +1243,23 @@
       <!-- Edit Workspace Form -->
       <form method="POST" action="/workspaces/{{ current_workspace.id }}/edit" class="space-y-5">
         
+        <!-- Workspace Subscription Tier -->
+        <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+          <div>
+            <span class="text-slate-500 dark:text-slate-400 block font-medium">Workspace Subscription Plan:</span>
+            <span class="font-bold text-slate-900 dark:text-white text-sm">
+              {% if plan_tier == 'pro' %}⭐ Pro Plan ($49/mo &middot; Unlimited){% else %}Free Starter Plan (Up to 5 Contracts){% endif %}
+            </span>
+          </div>
+          {% if plan_tier != 'pro' %}
+          <button type="button" onclick="closeEditWorkspaceModal(); openPricingModal();" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs transition shadow-sm">
+            Upgrade to Pro &rarr;
+          </button>
+          {% else %}
+          <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Active</span>
+          {% endif %}
+        </div>
+
         <!-- Workspace Name -->
         <div>
           <label for="ws_edit_name" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -1129,6 +1372,16 @@
 <!-- Embedded Contracts JSON for interactive modal hydration -->
 <script>
   const contractsData = {{ all_contracts_json|safe }};
+
+  function openPricingModal() {
+    const el = document.getElementById('inapp-pricing-modal');
+    if (el) el.classList.remove('hidden');
+  }
+
+  function closePricingModal() {
+    const el = document.getElementById('inapp-pricing-modal');
+    if (el) el.classList.add('hidden');
+  }
 
   function openEmailSetupModal() {
     const el = document.getElementById('email-setup-modal');

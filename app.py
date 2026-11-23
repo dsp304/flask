@@ -54,6 +54,8 @@ from db import (
     update_workspace,
     seed_sample_workspaces_and_contracts,
     perform_24_month_mailbox_scan,
+    get_workspace_plan,
+    set_workspace_plan,
 )
 from parser import parse_inbound_email
 from extractor import extract_contract_from_text, ContractExtractionResult
@@ -61,6 +63,12 @@ from verticals import VERTICAL_CONFIGS
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("TOKEN_ENCRYPTION_KEY") or "watchdog_secret_2026"
+
+
+@app.context_processor
+def inject_plan_defaults():
+    return {"plan_tier": "free"}
+
 
 # Initialize database tables on application start
 try:
@@ -145,6 +153,10 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
                 c_copy["annual_spend_estimate"] = str(c_copy["annual_spend_estimate"])
         combined_contracts.append(c_copy)
 
+    plan_tier = "free"
+    if not is_demo and current_workspace:
+        plan_tier = current_workspace.get("plan_tier") or get_workspace_plan(workspace_id) or "free"
+
     return render_template(
         "dashboard.html",
         active_nav="dashboard",
@@ -159,6 +171,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         total_spend=total_spend,
         critical_deadlines=critical_deadlines,
         is_demo=is_demo,
+        plan_tier=plan_tier,
     )
 
 
@@ -907,6 +920,54 @@ def edit_workspace_settings(workspace_id: str):
 
     flash(f"Workspace '{name}' updated successfully.", "success")
     return redirect(url_for("dashboard", workspace_id=workspace_id))
+
+
+@app.route("/workspaces/<workspace_id>/upgrade", methods=["POST"])
+def upgrade_workspace_tier(workspace_id: str):
+    """Upgrade workspace to Pro tier ($49/month)."""
+    user_email = session.get("user_email")
+    if not user_email:
+        flash("Please sign in to manage your workspace plan.", "info")
+        return redirect(url_for("auth_login"))
+
+    if not can_user_access_workspace(user_email, workspace_id) and workspace_id != "ws_default":
+        flash("You do not have permission to manage subscriptions for this workspace.", "error")
+        return redirect(url_for("dashboard", workspace_id=workspace_id))
+
+    success = set_workspace_plan(workspace_id, "pro")
+    if success:
+        flash("🎉 Successfully upgraded to Pro Plan! You now have unlimited contracts, certified mail cancellation instructions, and multi-location monitoring.", "success")
+    else:
+        flash("Could not update subscription plan. Please try again.", "error")
+
+    return redirect(url_for("dashboard", workspace_id=workspace_id))
+
+
+@app.route("/workspaces/<workspace_id>/downgrade", methods=["POST"])
+def downgrade_workspace_tier(workspace_id: str):
+    """Downgrade workspace to Free Starter tier."""
+    user_email = session.get("user_email")
+    if not user_email:
+        flash("Please sign in to manage your workspace plan.", "info")
+        return redirect(url_for("auth_login"))
+
+    if not can_user_access_workspace(user_email, workspace_id) and workspace_id != "ws_default":
+        flash("You do not have permission to manage subscriptions for this workspace.", "error")
+        return redirect(url_for("dashboard", workspace_id=workspace_id))
+
+    success = set_workspace_plan(workspace_id, "free")
+    if success:
+        flash("Workspace subscription plan switched to Free Starter.", "info")
+    else:
+        flash("Could not update subscription plan. Please try again.", "error")
+
+    return redirect(url_for("dashboard", workspace_id=workspace_id))
+
+
+@app.route("/pricing", methods=["GET"])
+def pricing_page():
+    """Redirect to the transparent two-tier pricing section on the landing page."""
+    return redirect(url_for("landing_general_b2b", _anchor="pricing"))
 
 
 # ---------------------------------------------------------------------------

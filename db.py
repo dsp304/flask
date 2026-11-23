@@ -286,6 +286,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE workspaces ADD COLUMN inbound_email_slug VARCHAR(64) NULL;"))
                 if "default_notice_period_days" not in ws_cols:
                     conn.execute(text("ALTER TABLE workspaces ADD COLUMN default_notice_period_days INT NOT NULL DEFAULT 30;"))
+                if "plan_tier" not in ws_cols:
+                    conn.execute(text("ALTER TABLE workspaces ADD COLUMN plan_tier VARCHAR(32) NOT NULL DEFAULT 'free';"))
         except Exception as ex:
             logger.warning(f"workspaces migration notice: {ex}")
 
@@ -336,19 +338,64 @@ def get_workspace(workspace_id: str) -> Optional[Dict[str, Any]]:
     """Fetch details for a specific workspace."""
     if not workspace_id:
         return None
-    query = text("SELECT id, name, vertical_id, default_notice_period_days, created_at FROM workspaces WHERE id = :workspace_id LIMIT 1")
     try:
         with engine.connect() as conn:
+            cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
+            select_cols = ["id", "name", "vertical_id", "default_notice_period_days", "created_at"]
+            if "plan_tier" in cols:
+                select_cols.append("plan_tier")
+            query = text(f"SELECT {', '.join(select_cols)} FROM workspaces WHERE id = :workspace_id LIMIT 1")
             row = conn.execute(query, {"workspace_id": workspace_id}).mappings().first()
             if not row:
                 return None
             res = dict(row)
             if res.get("default_notice_period_days") is None:
                 res["default_notice_period_days"] = 30
+            if "plan_tier" not in res or not res.get("plan_tier"):
+                res["plan_tier"] = "free"
             return res
     except Exception as e:
         logger.error(f"Error getting workspace {workspace_id}: {e}")
         return None
+
+
+def get_workspace_plan(workspace_id: str) -> str:
+    """Return 'free' or 'pro' for a workspace."""
+    if not workspace_id:
+        return "free"
+    try:
+        with engine.connect() as conn:
+            cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
+            if "plan_tier" in cols:
+                row = conn.execute(text("SELECT plan_tier FROM workspaces WHERE id = :id LIMIT 1"), {"id": workspace_id}).first()
+                if row and row[0]:
+                    return row[0].lower()
+    except Exception:
+        pass
+    return "free"
+
+
+def set_workspace_plan(workspace_id: str, plan_tier: str = "pro") -> bool:
+    """Update workspace plan_tier ('free' or 'pro')."""
+    if not workspace_id:
+        return False
+    clean_plan = "pro" if str(plan_tier).lower() == "pro" else "free"
+    try:
+        with engine.begin() as conn:
+            try:
+                cols = [r[0].lower() for r in conn.execute(text("SHOW COLUMNS FROM workspaces")).fetchall()]
+                if "plan_tier" not in cols:
+                    conn.execute(text("ALTER TABLE workspaces ADD COLUMN plan_tier VARCHAR(32) NOT NULL DEFAULT 'free';"))
+            except Exception:
+                pass
+            conn.execute(text("UPDATE workspaces SET plan_tier = :plan, updated_at = CURRENT_TIMESTAMP WHERE id = :id"), {
+                "plan": clean_plan,
+                "id": workspace_id,
+            })
+            return True
+    except Exception as e:
+        logger.error(f"Error setting workspace plan: {e}")
+        return False
 
 
 def create_workspace(

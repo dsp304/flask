@@ -52,6 +52,21 @@
         <!-- Right Side: User Session or Sign-in -->
         {% if session.get('user_email') %}
         <div class="flex items-center space-x-3 text-xs sm:text-sm">
+          <!-- In-App Plan Badge / Upgrade Pill -->
+          <button 
+            type="button" 
+            onclick="if(typeof openPricingModal==='function'){openPricingModal();}else{window.location.href='/#pricing';}" 
+            class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold {% if plan_tier == 'pro' %}bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800{% else %}bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:border-indigo-400{% endif %} transition shadow-sm"
+            title="View Workspace Pricing & Plan">
+            {% if plan_tier == 'pro' %}
+              <span>⭐ Pro Plan</span>
+            {% else %}
+              <span>Free Plan</span>
+              <span class="text-indigo-400">&bull;</span>
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">Upgrade</span>
+            {% endif %}
+          </button>
+          <span class="text-slate-300 dark:text-slate-700">|</span>
           <span class="text-slate-600 dark:text-slate-400">
             Welcome 
             <a href="/dashboard" class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline hover:text-indigo-700 dark:hover:text-indigo-300 transition" title="Go to Dashboard">
@@ -68,10 +83,15 @@
           </a>
         </div>
         {% else %}
-        <a href="/auth/login{% if vertical_id %}?vertical={{ vertical_id }}{% endif %}" class="inline-flex items-center space-x-1 text-xs sm:text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
-          <span>Sign in with Google or Microsoft</span>
-          <span>&rarr;</span>
-        </a>
+        <div class="flex items-center space-x-4 sm:space-x-6 text-xs sm:text-sm">
+          <a href="/#pricing" class="font-semibold text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition">
+            Pricing
+          </a>
+          <a href="/auth/login{% if vertical_id %}?vertical={{ vertical_id }}{% endif %}" class="inline-flex items-center space-x-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+            <span>Sign in with Google or Microsoft</span>
+            <span>&rarr;</span>
+          </a>
+        </div>
         {% endif %}
 
       </div>

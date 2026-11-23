@@ -171,5 +171,176 @@
     </div>
   </div>
 
+  <!-- ========================================================================= -->
+  <!-- 5. TRANSPARENT TWO-TIER PRICING SECTION -->
+  <!-- ========================================================================= -->
+  <section id="pricing" class="pt-16 pb-8 border-t border-slate-200 dark:border-slate-800 space-y-10">
+    <div class="text-center space-y-3 max-w-2xl mx-auto">
+      <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+        <span>Transparent Pricing</span>
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+        Two Simple Tiers. Start Free Today.
+      </h2>
+      <p class="text-sm text-slate-600 dark:text-slate-400">
+        Monitor your first 5 vendor contracts 100% free forever. Upgrade only when your portfolio expands.
+      </p>
+    </div>
+
+    <!-- Pricing Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto items-stretch">
+      
+      <!-- Tier 1: Free Starter Plan -->
+      <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 flex flex-col justify-between shadow-sm hover:shadow-md transition space-y-6">
+        <div class="space-y-4">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-slate-500">Starter Tier</div>
+            <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">Free Forever</h3>
+            <p class="text-xs text-slate-500 mt-1">
+              Ideal for single locations, evaluating your first vendor agreements, and small practices.
+            </p>
+          </div>
+
+          <div class="flex items-baseline space-x-1.5 pt-2">
+            <span class="text-4xl font-extrabold text-slate-900 dark:text-white">$0</span>
+            <span class="text-xs font-semibold text-slate-500">/ forever</span>
+          </div>
+          <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+            &check; No credit card required &middot; Instant access
+          </div>
+
+          <!-- Feature List -->
+          <ul class="space-y-2.5 pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300">
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span><strong>1 Active Workspace</strong></span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span><strong>1 Connected Mailbox</strong> (Google or Microsoft)</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Full 24-Month Mailbox Scan</strong></span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Up to 5 Active Contracts Monitored</strong></span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span>Standard 30-Day Cancellation Notice Alerts</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span>PDF Contract Attachment Viewer</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-emerald-500 font-bold text-sm leading-none">&check;</span>
+              <span>Step-by-Step Cancellation Procedures</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="pt-6">
+          <a 
+            href="/auth/login{% if vertical_id %}?vertical={{ vertical_id }}{% endif %}" 
+            class="w-full py-3.5 px-6 rounded-xl font-bold text-xs sm:text-sm text-center block text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 transition shadow-sm">
+            Start Free Contract Review &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- Tier 2: Pro Tier Plan -->
+      <div class="relative bg-white dark:bg-slate-900 rounded-3xl border-2 border-indigo-600 dark:border-indigo-500 p-6 sm:p-8 flex flex-col justify-between shadow-xl space-y-6">
+        <!-- Floating Pill Badge -->
+        <div class="absolute -top-3.5 right-6 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md">
+          Most Popular &middot; High ROI
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Portfolio & Team Tier</div>
+            <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">Pro Plan</h3>
+            <p class="text-xs text-slate-500 mt-1">
+              For commercial property managers, clinics, MSPs, and growing organizations.
+            </p>
+          </div>
+
+          <div class="flex items-baseline space-x-1.5 pt-2">
+            <span class="text-4xl font-extrabold text-slate-900 dark:text-white">$49</span>
+            <span class="text-xs font-semibold text-slate-500">/ month</span>
+          </div>
+          <div class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+            &check; Billed monthly &middot; Cancel anytime with 1 click
+          </div>
+
+          <!-- Feature List -->
+          <ul class="space-y-2.5 pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300">
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Unlimited Workspaces</strong> (Multi-property & multi-location)</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Unlimited Authorized Team Emails</strong> under workspace</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Unlimited Monitored Contracts</strong> (Zero caps)</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Custom 45, 60, & 90-Day Early Warning Deadlines</strong></span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Certified Mail Cancellation Instructions</strong> & Mail Address Verification</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span><strong>Certificate of Insurance (COI) Tracking</strong> & Policy Expirations</span>
+            </li>
+            <li class="flex items-start space-x-2.5">
+              <span class="text-indigo-600 dark:text-indigo-400 font-bold text-sm leading-none">&check;</span>
+              <span>Priority Gemini 3.5 Flash-Lite AI Extraction SLA</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="pt-6">
+          <a 
+            href="/auth/login{% if vertical_id %}?vertical={{ vertical_id }}&plan=pro{% else %}?plan=pro{% endif %}" 
+            class="w-full py-3.5 px-6 rounded-xl font-bold text-xs sm:text-sm text-center block text-white bg-indigo-600 hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/25">
+            Get Started with Pro &rarr;
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Trust Strip -->
+    <div class="pt-6 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs text-slate-500">
+      <div class="flex items-center space-x-2">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+        <span>Read-Only Mailbox Access &middot; Zero Emails Stored</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Set Up in Under 2 Minutes</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        </svg>
+        <span>Cancel or Switch Tiers Anytime in 1 Click</span>
+      </div>
+    </div>
+  </section>
+
 </div>
 {% endblock %}
