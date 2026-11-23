@@ -254,6 +254,30 @@ def init_db():
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
 
+    create_contract_history_sql = """
+    CREATE TABLE IF NOT EXISTS contract_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        contract_id INT NOT NULL,
+        workspace_id VARCHAR(64) NOT NULL,
+        event_type VARCHAR(64) NOT NULL DEFAULT 'renewal',
+        previous_expiration_date DATE NULL,
+        new_expiration_date DATE NULL,
+        previous_cancellation_deadline DATE NULL,
+        new_cancellation_deadline DATE NULL,
+        previous_spend DECIMAL(12, 2) NULL,
+        new_spend DECIMAL(12, 2) NULL,
+        previous_status VARCHAR(32) NULL,
+        new_status VARCHAR(32) NULL,
+        event_summary TEXT NULL,
+        source_email_subject VARCHAR(500) NULL,
+        source_sender_email VARCHAR(255) NULL,
+        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_history_contract (contract_id),
+        INDEX idx_history_workspace (workspace_id),
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+
     # Seed default workspace if absent
     seed_default_workspace_sql = """
     INSERT IGNORE INTO workspaces (id, name, vertical_id, default_notice_period_days)
@@ -277,6 +301,7 @@ def init_db():
             conn.execute(text(create_ingestion_jobs_sql))
             conn.execute(text(create_workspace_members_sql))
             conn.execute(text(create_user_profiles_sql))
+            conn.execute(text(create_contract_history_sql))
 
         # 2. Automated safe column migrations
         try:
@@ -780,6 +805,8 @@ def deduplicate_existing_contracts(workspace_id: Optional[str] = None) -> int:
 def find_existing_contract_id(workspace_id: str, vendor_name: Optional[str], contract_title: Optional[str] = None) -> Optional[int]:
     """
     Finds an existing contract id for a vendor in a workspace to prevent duplicate contracts.
+    Cancelled contracts are excluded: a cancelled contract cannot be reopened, and any
+    future contract for that vendor is treated as a new contract.
     """
     if not vendor_name or not str(vendor_name).strip():
         return None
@@ -789,6 +816,7 @@ def find_existing_contract_id(workspace_id: str, vendor_name: Optional[str], con
         SELECT id FROM contracts
         WHERE workspace_id = :workspace_id
           AND LOWER(TRIM(vendor_name)) = :vendor
+          AND status != 'cancelled'
         ORDER BY id DESC
         LIMIT 1
     """)
@@ -799,6 +827,202 @@ def find_existing_contract_id(workspace_id: str, vendor_name: Optional[str], con
     except Exception as ex:
         logger.warning(f"Error checking existing contract for vendor {vendor_name}: {ex}")
         return None
+
+
+def record_contract_history(
+    contract_id: int,
+    workspace_id: str,
+    event_type: str = "renewal",
+    previous_expiration_date: Optional[Any] = None,
+    new_expiration_date: Optional[Any] = None,
+    previous_cancellation_deadline: Optional[Any] = None,
+    new_cancellation_deadline: Optional[Any] = None,
+    previous_spend: Optional[float] = None,
+    new_spend: Optional[float] = None,
+    previous_status: Optional[str] = None,
+    new_status: Optional[str] = None,
+    event_summary: Optional[str] = None,
+    source_email_subject: Optional[str] = None,
+    source_sender_email: Optional[str] = None,
+    recorded_at: Optional[Any] = None,
+) -> bool:
+    """Record a lifecycle event (created, renewal, cancellation, terms_update) into contract_history."""
+    if not contract_id or not workspace_id:
+        return False
+
+    query = text("""
+        INSERT INTO contract_history (
+            contract_id, workspace_id, event_type,
+            previous_expiration_date, new_expiration_date,
+            previous_cancellation_deadline, new_cancellation_deadline,
+            previous_spend, new_spend,
+            previous_status, new_status,
+            event_summary, source_email_subject, source_sender_email,
+            recorded_at
+        ) VALUES (
+            :contract_id, :workspace_id, :event_type,
+            :previous_expiration_date, :new_expiration_date,
+            :previous_cancellation_deadline, :new_cancellation_deadline,
+            :previous_spend, :new_spend,
+            :previous_status, :new_status,
+            :event_summary, :source_email_subject, :source_sender_email,
+            :recorded_at
+        )
+    """)
+    try:
+        with engine.begin() as conn:
+            conn.execute(query, {
+                "contract_id": contract_id,
+                "workspace_id": workspace_id,
+                "event_type": event_type,
+                "previous_expiration_date": sanitize_date_str(previous_expiration_date),
+                "new_expiration_date": sanitize_date_str(new_expiration_date),
+                "previous_cancellation_deadline": sanitize_date_str(previous_cancellation_deadline),
+                "new_cancellation_deadline": sanitize_date_str(new_cancellation_deadline),
+                "previous_spend": previous_spend,
+                "new_spend": new_spend,
+                "previous_status": previous_status,
+                "new_status": new_status,
+                "event_summary": event_summary,
+                "source_email_subject": str(source_email_subject)[:500] if source_email_subject else None,
+                "source_sender_email": str(source_sender_email)[:255] if source_sender_email else None,
+                "recorded_at": recorded_at or datetime.now(),
+            })
+            return True
+    except Exception as e:
+        logger.error(f"Error recording contract history for contract #{contract_id}: {e}")
+        return False
+
+
+def get_contract_history(contract_id: int) -> List[Dict[str, Any]]:
+    """Retrieve full lifecycle history for a contract, ordered by recorded_at DESC."""
+    if not contract_id:
+        return []
+
+    query = text("""
+        SELECT * FROM contract_history
+        WHERE contract_id = :contract_id
+        ORDER BY recorded_at DESC, id DESC
+    """)
+    results = []
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"contract_id": contract_id}).mappings().all()
+            for r in rows:
+                item = dict(r)
+                for k in ("previous_expiration_date", "new_expiration_date", "previous_cancellation_deadline", "new_cancellation_deadline"):
+                    if item.get(k):
+                        item[f"{k}_display"] = str(item[k])[:10]
+                    else:
+                        item[f"{k}_display"] = "—"
+
+                rec_at = item.get("recorded_at")
+                if rec_at:
+                    if isinstance(rec_at, (datetime, date)):
+                        item["recorded_at_display"] = rec_at.strftime("%b %d, %Y at %I:%M %p")
+                    else:
+                        item["recorded_at_display"] = str(rec_at)[:19]
+                else:
+                    item["recorded_at_display"] = "Recent"
+
+                ev_type = str(item.get("event_type") or "").lower()
+                if ev_type == "renewal":
+                    item["badge_title"] = "Contract Renewed"
+                    item["badge_color"] = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300"
+                    item["icon"] = "🔄"
+                elif ev_type == "cancellation":
+                    item["badge_title"] = "Contract Cancelled"
+                    item["badge_color"] = "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-300"
+                    item["icon"] = "🛑"
+                elif ev_type == "created":
+                    item["badge_title"] = "Initial Ingestion"
+                    item["badge_color"] = "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300"
+                    item["icon"] = "📋"
+                else:
+                    item["badge_title"] = "Terms Updated"
+                    item["badge_color"] = "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300"
+                    item["icon"] = "✏️"
+
+                results.append(item)
+    except Exception as e:
+        logger.error(f"Error fetching contract history for #{contract_id}: {e}")
+    return results
+
+
+def cancel_contract(
+    contract_id: int,
+    reason: str = "Cancellation notice received",
+    user_email: Optional[str] = None,
+    source_subject: Optional[str] = None,
+    source_sender: Optional[str] = None,
+) -> bool:
+    """
+    Mark an active/review contract as permanently CANCELLED.
+    A cancelled contract cannot be reopened.
+    Records cancellation event in contract_history.
+    """
+    existing = get_contract(contract_id)
+    if not existing:
+        return False
+
+    ws_id = existing.get("workspace_id")
+    prev_status = existing.get("status")
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE contracts SET
+                    status = 'cancelled',
+                    calendar_reminder_status = 'cancelled',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+            """), {"id": contract_id})
+
+        # Record in history
+        summary = f"Contract moved to cancelled: {reason}."
+        record_contract_history(
+            contract_id=contract_id,
+            workspace_id=ws_id,
+            event_type="cancellation",
+            previous_expiration_date=existing.get("expiration_or_renewal_date"),
+            new_expiration_date=existing.get("expiration_or_renewal_date"),
+            previous_cancellation_deadline=existing.get("calculated_cancellation_deadline"),
+            new_cancellation_deadline=existing.get("calculated_cancellation_deadline"),
+            previous_spend=existing.get("annual_spend_estimate"),
+            new_spend=0.0,
+            previous_status=prev_status,
+            new_status="cancelled",
+            event_summary=summary,
+            source_email_subject=source_subject,
+            source_sender_email=source_sender or user_email,
+        )
+        logger.info(f"Contract #{contract_id} ({existing.get('vendor_name')}) permanently moved to 'cancelled'.")
+        return True
+    except Exception as e:
+        logger.error(f"Error cancelling contract #{contract_id}: {e}")
+        return False
+
+
+def get_cancelled_contracts(workspace_id: str) -> List[Dict[str, Any]]:
+    """Retrieve all cancelled contracts for a workspace, ordered by updated_at DESC."""
+    if not workspace_id:
+        return []
+
+    query = text("""
+        SELECT * FROM contracts
+        WHERE workspace_id = :workspace_id
+          AND status = 'cancelled'
+        ORDER BY updated_at DESC, id DESC
+    """)
+    cancelled_items = []
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"workspace_id": workspace_id}).mappings().all()
+            for r in rows:
+                cancelled_items.append(_hydrate_contract_record(dict(r)))
+    except Exception as e:
+        logger.error(f"Error fetching cancelled contracts for {workspace_id}: {e}")
+    return cancelled_items
 
 
 def check_duplicate_fingerprint(workspace_id: str, fingerprint_hash: str) -> bool:
@@ -845,11 +1069,20 @@ def insert_contract(
     how_to_change_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Insert an extracted contract into the contracts table with strict deduplication.
-    If a contract already exists for the same vendor in this workspace, updates the
-    existing record instead of creating a duplicate row.
-    Enforces uq_workspace_fingerprint constraint.
+    Insert or update a contract record with renewal history tracking and cancellation handling:
+    1. If the message is a cancellation notice:
+       - Moves the existing contract to 'cancelled' (permanent: cannot be reopened).
+       - Logs cancellation event in contract_history.
+    2. If the message is a renewal for an existing contract:
+       - Logs renewal event in contract_history with previous and new dates.
+       - Updates existing contract with new dates and terms.
+       - Resets calendar reminder for the new deadline.
+    3. If no existing active contract is found (or previous contract was cancelled):
+       - Generates a new contract record.
+       - Logs initial 'created' event in contract_history.
     """
+    from extractor import is_cancellation_message
+
     # Safe field resolution from Pydantic model or dict
     if hasattr(extraction, "model_dump"):
         data = extraction.model_dump()
@@ -863,6 +1096,34 @@ def insert_contract(
     how_change = how_to_change_summary or data.get("how_to_change_summary")
     vendor = data.get("vendor_name")
     title = data.get("contract_title")
+
+    # Check for cancellation notice
+    is_canc = bool(data.get("is_cancellation_or_termination")) or is_cancellation_message(email_subject, raw_content)
+    
+    # -------------------------------------------------------------------------
+    # Scenario A: Cancellation Notice Received
+    # -------------------------------------------------------------------------
+    if is_canc:
+        existing_id = find_existing_contract_id(workspace_id, vendor, title)
+        reason = data.get("cancellation_reason") or "Contract cancellation notice received via email"
+        if existing_id:
+            cancel_contract(
+                contract_id=existing_id,
+                reason=reason,
+                user_email=sender_email,
+                source_subject=email_subject,
+                source_sender=sender_email,
+            )
+            return {
+                "id": existing_id,
+                "workspace_id": workspace_id,
+                "fingerprint_hash": fingerprint_hash,
+                "status": "cancelled",
+                "is_cancellation": True,
+            }
+        else:
+            # If no active contract found, record this as a discovered cancelled contract
+            status = "cancelled"
 
     params = {
         "workspace_id": workspace_id,
@@ -891,10 +1152,54 @@ def insert_contract(
         "raw_content": raw_content,
     }
 
-    # Deduplication Step 1: Check if this vendor already exists in this workspace
+    # -------------------------------------------------------------------------
+    # Scenario B: Existing Active/Review Contract Exists -> Update & Log History
+    # -------------------------------------------------------------------------
     existing_id = find_existing_contract_id(workspace_id, vendor, title)
     if existing_id:
-        logger.info(f"Existing contract {existing_id} found for vendor '{vendor}' in workspace {workspace_id}. Updating record to prevent duplicate.")
+        existing = get_contract(existing_id)
+        if existing:
+            old_exp = existing.get("expiration_or_renewal_date")
+            old_deadline = existing.get("calculated_cancellation_deadline")
+            new_exp = sanitize_date_str(data.get("expiration_or_renewal_date"))
+            new_deadline = sanitize_date_str(data.get("calculated_cancellation_deadline"))
+            old_spend = existing.get("annual_spend_estimate")
+            new_spend = data.get("annual_spend_estimate")
+
+            # Check if this is a renewal (new expiration date or new cancellation deadline)
+            is_renewal = False
+            if new_exp and (str(old_exp)[:10] != str(new_exp)[:10]):
+                is_renewal = True
+            elif new_deadline and (str(old_deadline)[:10] != str(new_deadline)[:10]):
+                is_renewal = True
+
+            event_type = "renewal" if is_renewal else "terms_update"
+            event_summary = (
+                f"Contract renewed: Term extended to {new_exp or old_exp} (Cancellation cutoff: {new_deadline or old_deadline})."
+                if is_renewal
+                else f"Contract terms updated from message: '{email_subject or 'Contract Update'}'."
+            )
+
+            # Record historical entry
+            record_contract_history(
+                contract_id=existing_id,
+                workspace_id=workspace_id,
+                event_type=event_type,
+                previous_expiration_date=old_exp,
+                new_expiration_date=new_exp or old_exp,
+                previous_cancellation_deadline=old_deadline,
+                new_cancellation_deadline=new_deadline or old_deadline,
+                previous_spend=old_spend,
+                new_spend=new_spend or old_spend,
+                previous_status=existing.get("status"),
+                new_status=status or existing.get("status"),
+                event_summary=event_summary,
+                source_email_subject=email_subject,
+                source_sender_email=sender_email,
+            )
+
+            logger.info(f"Existing contract #{existing_id} ({vendor}) updated: event={event_type}")
+
         update_sql = text("""
             UPDATE contracts SET
                 status = :status,
@@ -925,15 +1230,28 @@ def insert_contract(
         update_params["id"] = existing_id
         with engine.begin() as conn:
             conn.execute(update_sql, update_params)
+            # If renewed, reset calendar reminder so the new deadline gets scheduled
+            if is_renewal:
+                conn.execute(text("UPDATE contracts SET calendar_reminder_set = 0, calendar_reminder_set_at = NULL WHERE id = :id"), {"id": existing_id})
+
         return {
             "id": existing_id,
             "workspace_id": workspace_id,
             "fingerprint_hash": fingerprint_hash,
             "status": status,
             "is_update": True,
+            "is_renewal": is_renewal,
         }
 
-    # Deduplication Step 2: Insert with ON DUPLICATE KEY UPDATE on uq_workspace_fingerprint
+    # -------------------------------------------------------------------------
+    # Scenario C: Brand New Contract (or Similar Contract Opened After Cancellation)
+    # -------------------------------------------------------------------------
+    # If a previous contract was cancelled, ensure fingerprint is unique to prevent collision
+    if check_duplicate_fingerprint(workspace_id, fingerprint_hash):
+        unique_suffix = hashlib.sha256(f"{fingerprint_hash}_{datetime.now().timestamp()}".encode("utf-8")).hexdigest()[:8]
+        fingerprint_hash = f"{fingerprint_hash[:23]}_{unique_suffix}"
+        params["fingerprint_hash"] = fingerprint_hash
+
     insert_sql = text("""
     INSERT INTO contracts (
         workspace_id,
@@ -1014,13 +1332,34 @@ def insert_contract(
 
     with engine.begin() as conn:
         result = conn.execute(insert_sql, params)
-        contract_id = result.lastrowid or existing_id
+        contract_id = result.lastrowid
+
+    if not contract_id:
+        contract_id = find_existing_contract_id(workspace_id, vendor, title)
+
+    if contract_id:
+        # Record initial history
+        ev_type = "cancellation" if status == "cancelled" else "created"
+        ev_sum = "Contract recorded as cancelled." if status == "cancelled" else f"Initial contract registered for monitoring. Cancellation cutoff: {params['calculated_cancellation_deadline']}."
+        record_contract_history(
+            contract_id=contract_id,
+            workspace_id=workspace_id,
+            event_type=ev_type,
+            new_expiration_date=params["expiration_or_renewal_date"],
+            new_cancellation_deadline=params["calculated_cancellation_deadline"],
+            new_spend=params["annual_spend_estimate"],
+            new_status=status,
+            event_summary=ev_sum,
+            source_email_subject=email_subject,
+            source_sender_email=sender_email,
+        )
 
     return {
         "id": contract_id,
         "workspace_id": workspace_id,
         "fingerprint_hash": fingerprint_hash,
         "status": status,
+        "is_new": True,
     }
 
 
@@ -1152,7 +1491,8 @@ def get_dashboard_contracts(workspace_id: str) -> Tuple[List[Dict[str, Any]], Li
     needs_review_query = text("""
         SELECT * FROM contracts
         WHERE workspace_id = :workspace_id
-          AND (status = 'needs_review' OR confidence_score < 0.85)
+          AND status != 'cancelled'
+          AND (status = 'needs_review' OR (confidence_score < 0.85 AND status != 'active'))
         ORDER BY created_at DESC
     """)
 
@@ -1260,6 +1600,11 @@ def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bo
         logger.warning(f"Contract {contract_id} not found for approval")
         return False
 
+    # A cancelled contract cannot be reopened
+    if existing.get("status") == "cancelled":
+        logger.warning(f"Contract #{contract_id} is permanently cancelled and cannot be reopened.")
+        return False
+
     vendor_name = updates.get("vendor_name")
     if vendor_name is None:
         vendor_name = existing.get("vendor_name")
@@ -1357,7 +1702,32 @@ def approve_and_update_contract(contract_id: int, updates: Dict[str, Any]) -> bo
     try:
         with engine.begin() as conn:
             result = conn.execute(update_sql, params)
-            return result.rowcount > 0
+            if result.rowcount > 0:
+                # Record terms update in contract_history if critical terms changed
+                exp_changed = str(exp_date or "") != str(existing.get("expiration_or_renewal_date") or "")
+                spend_changed = spend_estimate != existing.get("annual_spend_estimate")
+                if exp_changed or spend_changed:
+                    change_desc = []
+                    if exp_changed:
+                        change_desc.append(f"Expiration updated to {exp_date}")
+                    if spend_changed:
+                        change_desc.append(f"Annual spend updated to ${spend_estimate:,.2f}" if spend_estimate else "Spend updated")
+                    record_contract_history(
+                        contract_id=contract_id,
+                        workspace_id=existing.get("workspace_id", ""),
+                        event_type="terms_update",
+                        previous_expiration_date=existing.get("expiration_or_renewal_date"),
+                        new_expiration_date=exp_date,
+                        previous_cancellation_deadline=existing.get("calculated_cancellation_deadline"),
+                        new_cancellation_deadline=cancellation_deadline,
+                        previous_spend=existing.get("annual_spend_estimate"),
+                        new_spend=spend_estimate,
+                        previous_status=existing.get("status"),
+                        new_status="active",
+                        event_summary="Contract details updated: " + "; ".join(change_desc),
+                    )
+                return True
+            return False
     except Exception as e:
         logger.error(f"Error approving contract {contract_id}: {e}")
         return False
@@ -1805,6 +2175,27 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                     "sender_email": "lifesafety@jci.com",
                     "email_subject": "Johnson Controls Central Monitoring Agreement #JCI-88301",
                 },
+                {
+                    "vendor_name": "CleanNet Facility Management",
+                    "contract_title": "Commercial Janitorial & Facility Sanitization Agreement",
+                    "category": "Security & Janitorial",
+                    "status": "cancelled",
+                    "notice_period_days": 60,
+                    "expiration_or_renewal_date": today - timedelta(days=90),
+                    "calculated_cancellation_deadline": today - timedelta(days=150),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 14400.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Fixed monthly rate ($1,200/mo).",
+                    "how_to_change_summary": "Formal notice of cancellation served by certified mail 60 days prior to contract expiration. Contract permanently cancelled.",
+                    "attachment_filename": "CleanNet_Commercial_Janitorial_Agreement.pdf",
+                    "coi_or_compliance_expiry": today - timedelta(days=60),
+                    "key_risk_flags": ["Contract cancelled per formal written notice"],
+                    "source_evidence_quote": "Notice of termination delivered to CleanNet Facility Management. Transitioned to internal custodial staff.",
+                    "confidence_score": 0.980,
+                    "sender_email": "accounts@cleannet.com",
+                    "email_subject": "CleanNet Facility Services - Notice of Non-Renewal & Final Account Settlement",
+                },
             ],
         },
         {
@@ -1898,6 +2289,27 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                     "sender_email": "ea-admin@microsoft.com",
                     "email_subject": "Microsoft Enterprise Agreement #EA-77192 - Annual True-Up Schedule",
                 },
+                {
+                    "vendor_name": "Rackspace Technology",
+                    "contract_title": "Dedicated Bare-Metal Hosting & Managed Colocation",
+                    "category": "Hardware & Infrastructure Leases",
+                    "status": "cancelled",
+                    "notice_period_days": 90,
+                    "expiration_or_renewal_date": today - timedelta(days=120),
+                    "calculated_cancellation_deadline": today - timedelta(days=210),
+                    "auto_renewal_term_months": 24,
+                    "annual_spend_estimate": 27600.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Power and rack kilowatt escalation clause.",
+                    "how_to_change_summary": "Formal non-renewal notice confirmed on Sept 14. Server cages decommissioned; cloud migration to AWS finalized.",
+                    "attachment_filename": "Rackspace_Dedicated_Hosting_Master_Agreement.pdf",
+                    "coi_or_compliance_expiry": today - timedelta(days=90),
+                    "key_risk_flags": ["Contract cancelled: hardware decommissioned"],
+                    "source_evidence_quote": "Confirmation of Non-Renewal: Hosting services scheduled for final decommission on schedule date.",
+                    "confidence_score": 0.970,
+                    "sender_email": "cancellations@rackspace.com",
+                    "email_subject": "Rackspace Dedicated Hosting Account #RS-4401 - Termination & Equipment Release Confirmation",
+                },
             ],
         },
         {
@@ -1969,6 +2381,27 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                     "confidence_score": 0.980,
                     "sender_email": "cs-contracts@carestreamdental.com",
                     "email_subject": "Carestream Dental CS 9600 Maintenance Contract #CD-3391 - Renewal Schedule",
+                },
+                {
+                    "vendor_name": "McKesson Medical Distribution",
+                    "contract_title": "Pharmaceutical Supply Distribution & PPE Standing Order",
+                    "category": "Dental & Medical Equipment Leases",
+                    "status": "cancelled",
+                    "notice_period_days": 60,
+                    "expiration_or_renewal_date": today - timedelta(days=60),
+                    "calculated_cancellation_deadline": today - timedelta(days=120),
+                    "auto_renewal_term_months": 12,
+                    "annual_spend_estimate": 18200.00,
+                    "currency": "USD",
+                    "price_escalation_summary": "Wholesale acquisition cost adjustment.",
+                    "how_to_change_summary": "Written notice of termination delivered 60 days prior to contract anniversary due to group purchasing consolidation.",
+                    "attachment_filename": "McKesson_Medical_Supply_Distribution_Agreement.pdf",
+                    "coi_or_compliance_expiry": today - timedelta(days=30),
+                    "key_risk_flags": ["Contract cancelled: vendor consolidated into Henry Schein"],
+                    "source_evidence_quote": "Notice of termination accepted. Account closed with zero outstanding balance.",
+                    "confidence_score": 0.965,
+                    "sender_email": "supply-contracts@mckesson.com",
+                    "email_subject": "McKesson Medical Agreement #MK-88210 - Termination Confirmation",
                 },
             ],
         },
@@ -2165,6 +2598,200 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                 contracts_seeded.append(c["vendor_name"])
                 total_inserted += 1
 
+                # Seed realistic history records for timeline view
+                c_row = conn.execute(
+                    text("SELECT id FROM contracts WHERE workspace_id = :ws_id AND vendor_name = :v LIMIT 1"),
+                    {"ws_id": ws_id, "v": c["vendor_name"]}
+                ).first()
+                if c_row:
+                    cid = c_row[0]
+                    h_count = conn.execute(
+                        text("SELECT COUNT(*) FROM contract_history WHERE contract_id = :cid"),
+                        {"cid": cid}
+                    ).scalar()
+                    if h_count == 0:
+                        v_name = c["vendor_name"]
+                        if c.get("status") == "cancelled":
+                            # Event 1: Initial created 18 months ago
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'created',
+                                    NULL, :exp_date,
+                                    NULL, :canc_date,
+                                    NULL, :spend, NULL, 'active',
+                                    'Initial agreement executed and ingested into Contract Watchdog.',
+                                    :subject, :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "exp_date": (c["expiration_or_renewal_date"] - timedelta(days=365)).isoformat(),
+                                "canc_date": (c["calculated_cancellation_deadline"] - timedelta(days=365)).isoformat(),
+                                "spend": c["annual_spend_estimate"],
+                                "subject": f"{v_name} - Master Agreement Execution",
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=540),
+                            })
+                            # Event 2: Cancellation 3 months ago
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'cancellation',
+                                    :exp_date, :exp_date,
+                                    :canc_date, :canc_date,
+                                    :spend, 0.00, 'active', 'cancelled',
+                                    :summary, :subject, :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "exp_date": c["expiration_or_renewal_date"].isoformat(),
+                                "canc_date": c["calculated_cancellation_deadline"].isoformat(),
+                                "spend": c["annual_spend_estimate"],
+                                "summary": f"Contract moved to cancelled: {c['how_to_change_summary']}",
+                                "subject": c["email_subject"],
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=90),
+                            })
+                        elif "Schindler" in v_name:
+                            # Event 1: Initial created 14 months ago
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'created',
+                                    NULL, :exp_date,
+                                    NULL, :canc_date,
+                                    NULL, 17500.00, NULL, 'active',
+                                    'Initial preventive maintenance agreement executed for 12-month term.',
+                                    'Schindler Elevator Agreement #ELEV-7821-PM - Executed Copy', :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "exp_date": (c["expiration_or_renewal_date"] - timedelta(days=365)).isoformat(),
+                                "canc_date": (c["calculated_cancellation_deadline"] - timedelta(days=365)).isoformat(),
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=420),
+                            })
+                            # Event 2: Renewal 2 months ago
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'renewal',
+                                    :prev_exp, :exp_date,
+                                    :prev_canc, :canc_date,
+                                    17500.00, :spend, 'active', 'active',
+                                    'Annual contract auto-renewal processed with 5% CPI escalator applied. Cancellation deadline updated to 60 days before new expiration date.',
+                                    :subject, :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "prev_exp": (c["expiration_or_renewal_date"] - timedelta(days=365)).isoformat(),
+                                "exp_date": c["expiration_or_renewal_date"].isoformat(),
+                                "prev_canc": (c["calculated_cancellation_deadline"] - timedelta(days=365)).isoformat(),
+                                "canc_date": c["calculated_cancellation_deadline"].isoformat(),
+                                "spend": c["annual_spend_estimate"],
+                                "subject": c["email_subject"],
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=60),
+                            })
+                        elif "Datadog" in v_name:
+                            # Event 1: Initial created 13 months ago
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'created',
+                                    NULL, :exp_date,
+                                    NULL, :canc_date,
+                                    NULL, 31200.00, NULL, 'active',
+                                    'Initial APM Pro Tier subscription order form executed.',
+                                    'Datadog Order Form #DD-90124 - Order Confirmation', :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "exp_date": (c["expiration_or_renewal_date"] - timedelta(days=365)).isoformat(),
+                                "canc_date": (c["calculated_cancellation_deadline"] - timedelta(days=365)).isoformat(),
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=390),
+                            })
+                            # Event 2: Renewal 1 month ago
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'renewal',
+                                    :prev_exp, :exp_date,
+                                    :prev_canc, :canc_date,
+                                    31200.00, :spend, 'active', 'active',
+                                    'Annual APM Pro subscription renewal confirmed with updated host commitments.',
+                                    :subject, :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "prev_exp": (c["expiration_or_renewal_date"] - timedelta(days=365)).isoformat(),
+                                "exp_date": c["expiration_or_renewal_date"].isoformat(),
+                                "prev_canc": (c["calculated_cancellation_deadline"] - timedelta(days=365)).isoformat(),
+                                "canc_date": c["calculated_cancellation_deadline"].isoformat(),
+                                "spend": c["annual_spend_estimate"],
+                                "subject": c["email_subject"],
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=30),
+                            })
+                        else:
+                            # Standard created event
+                            conn.execute(text("""
+                                INSERT INTO contract_history (
+                                    contract_id, workspace_id, event_type,
+                                    previous_expiration_date, new_expiration_date,
+                                    previous_cancellation_deadline, new_cancellation_deadline,
+                                    previous_spend, new_spend, previous_status, new_status,
+                                    event_summary, source_email_subject, source_sender_email, recorded_at
+                                ) VALUES (
+                                    :cid, :ws_id, 'created',
+                                    NULL, :exp_date,
+                                    NULL, :canc_date,
+                                    NULL, :spend, NULL, :status,
+                                    'Initial agreement discovered from 24-month mailbox extraction.',
+                                    :subject, :sender, :rec_at
+                                )
+                            """), {
+                                "cid": cid, "ws_id": ws_id,
+                                "exp_date": c["expiration_or_renewal_date"].isoformat(),
+                                "canc_date": c["calculated_cancellation_deadline"].isoformat(),
+                                "spend": c["annual_spend_estimate"],
+                                "status": c["status"],
+                                "subject": c["email_subject"],
+                                "sender": c["sender_email"],
+                                "rec_at": datetime.now() - timedelta(days=180),
+                            })
+
             seeded_summary.append({
                 "workspace_id": ws_id,
                 "workspace_name": ws["name"],
@@ -2214,7 +2841,10 @@ def perform_24_month_mailbox_scan(
     if vertical_id not in VERTICAL_CONFIGS:
         vertical_id = "general_b2b"
     vertical_cfg = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
-    keywords = vertical_cfg.get("search_keywords", ["renewal", "auto-renew", "notice period", "contract", "cancellation"])
+    keywords = list(vertical_cfg.get("search_keywords", ["renewal", "auto-renew", "notice period", "contract"]))
+    for cancel_kw in ["cancellation", "non-renewal notice", "notice of cancellation", "notice of termination"]:
+        if cancel_kw not in keywords:
+            keywords.append(cancel_kw)
 
     # Register email in workspace_members if not present
     try:

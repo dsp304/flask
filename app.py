@@ -57,6 +57,9 @@ from db import (
     perform_24_month_mailbox_scan,
     get_workspace_plan,
     set_workspace_plan,
+    get_contract_history,
+    cancel_contract,
+    get_cancelled_contracts,
 )
 from calendar_service import (
     auto_setup_critical_contract_calendar_reminders,
@@ -146,6 +149,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         logger.warning(f"Auto calendar reminder setup notice for workspace {workspace_id}: {cal_err}")
 
     active_contracts, review_contracts = get_dashboard_contracts(workspace_id)
+    cancelled_contracts = get_cancelled_contracts(workspace_id) if not is_demo else []
 
     total_spend = sum(
         float(c.get("annual_spend_estimate") or 0.0)
@@ -157,7 +161,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
     )
 
     combined_contracts = []
-    for c in (review_contracts + active_contracts):
+    for c in (review_contracts + active_contracts + cancelled_contracts):
         c_copy = dict(c)
         for k in ("expiration_or_renewal_date", "calculated_cancellation_deadline", "coi_or_compliance_expiry", "created_at", "updated_at", "calendar_reminder_set_at", "calendar_reminder_date"):
             if c_copy.get(k) is not None:
@@ -183,6 +187,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         search_query_string=search_query_string,
         active_contracts=active_contracts,
         review_contracts=review_contracts,
+        cancelled_contracts=cancelled_contracts,
         all_contracts_json=json.dumps(combined_contracts, default=str),
         total_spend=total_spend,
         critical_deadlines=critical_deadlines,
@@ -726,6 +731,13 @@ def approve_contract(contract_id: int):
         flash(f"Contract #{contract_id} not found.", "error")
         return redirect(url_for("dashboard"))
 
+    # A cancelled contract cannot be reopened
+    if contract.get("status") == "cancelled":
+        if request.is_json:
+            return jsonify({"error": "A cancelled contract cannot be reopened. New contracts for this vendor must be ingested as a separate contract."}), 400
+        flash("Cancelled contracts cannot be reopened. If this vendor has a new agreement, it will be created as a new contract.", "error")
+        return redirect(url_for("dashboard", workspace_id=contract["workspace_id"]))
+
     # Enforce workspace access check
     if not can_user_access_workspace(user_email, contract["workspace_id"]):
         logger.warning(f"Unauthorized approval attempt on contract {contract_id} by {user_email}")
@@ -765,6 +777,93 @@ def approve_contract(contract_id: int):
 
     flash(f"Contract for '{vendor}' has been approved and activated in watchdog alerts.", "success")
     return redirect(url_for("dashboard", workspace_id=contract["workspace_id"]))
+
+
+# ---------------------------------------------------------------------------
+# Contract History & Cancellation Routes
+# ---------------------------------------------------------------------------
+@app.route("/api/contracts/<int:contract_id>/history", methods=["GET"])
+def contract_history_api(contract_id: int):
+    """
+    Retrieve chronological lifecycle history for a contract (renewals, cancellations, terms updates).
+    """
+    contract = get_contract(contract_id)
+    if not contract:
+        return jsonify({"error": f"Contract #{contract_id} not found"}), 404
+
+    user_email = session.get("user_email")
+    ws_id = contract.get("workspace_id")
+    is_demo_ws = ws_id in ("ws_default", "ws_apex_property_management", "ws_nexus_it_solutions", "ws_metro_health_clinic")
+    if user_email and not is_demo_ws:
+        if not can_user_access_workspace(user_email, ws_id):
+            return jsonify({"error": "Access denied"}), 403
+
+    history = get_contract_history(contract_id)
+    return jsonify({
+        "status": "success",
+        "contract_id": contract_id,
+        "contract": {
+            "id": contract["id"],
+            "vendor_name": contract["vendor_name"],
+            "contract_title": contract["contract_title"],
+            "status": contract["status"],
+            "expiration_or_renewal_date": str(contract.get("expiration_or_renewal_date") or ""),
+            "calculated_cancellation_deadline": str(contract.get("calculated_cancellation_deadline") or ""),
+            "annual_spend_estimate": contract.get("annual_spend_estimate"),
+            "how_to_change_summary": contract.get("how_to_change_summary"),
+        },
+        "history": history,
+        "count": len(history),
+    })
+
+
+@app.route("/contracts/<int:contract_id>/cancel", methods=["POST"])
+def cancel_contract_action(contract_id: int):
+    """
+    Move an active contract to permanently 'cancelled'.
+    A cancelled contract cannot be reopened.
+    """
+    # Demo guard
+    if request.args.get("demo") == "1":
+        if request.is_json:
+            return jsonify({"error": "Modifications are disabled in read-only demo mode."}), 403
+        flash("Action disabled: Contracts cannot be cancelled in read-only demo mode.", "error")
+        return redirect(url_for("demo_dashboard"))
+
+    user_email = session.get("user_email")
+    if not user_email:
+        if request.is_json:
+            return jsonify({"error": "Authentication required"}), 401
+        flash("Please sign in to manage contracts.", "error")
+        return redirect(url_for("auth_login"))
+
+    contract = get_contract(contract_id)
+    if not contract:
+        if request.is_json:
+            return jsonify({"error": f"Contract #{contract_id} not found"}), 404
+        flash(f"Contract #{contract_id} not found.", "error")
+        return redirect(url_for("dashboard"))
+
+    ws_id = contract["workspace_id"]
+    if not can_user_access_workspace(user_email, ws_id):
+        if request.is_json:
+            return jsonify({"error": "Access denied"}), 403
+        flash("Access denied: You do not have permission to modify contracts in this workspace.", "error")
+        return redirect(url_for("dashboard", workspace_id=ws_id))
+
+    if contract.get("status") == "cancelled":
+        flash(f"Contract #{contract_id} ({contract.get('vendor_name')}) is already cancelled.", "info")
+        return redirect(url_for("dashboard", workspace_id=ws_id))
+
+    reason = request.form.get("reason") or "Manual cancellation notice confirmed by team"
+    cancel_contract(
+        contract_id=contract_id,
+        reason=reason,
+        user_email=user_email,
+        source_subject=f"Manual Cancellation Notice - {contract.get('vendor_name')}",
+    )
+    flash(f"Contract for {contract.get('vendor_name')} has been moved to Cancelled. It is now a permanent historical record and cannot be reopened.", "info")
+    return redirect(url_for("dashboard", workspace_id=ws_id))
 
 
 # ---------------------------------------------------------------------------

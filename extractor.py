@@ -40,6 +40,41 @@ class ContractExtractionResult(BaseModel):
     key_risk_flags: List[str] = Field(default_factory=list, description="Critical risk bullet points.")
     source_evidence_quote: str = Field(description="Verbatim sentence proving dates or terms.")
     confidence_score: float = Field(description="Float between 0.0 and 1.0.")
+    is_cancellation_or_termination: bool = Field(
+        default=False,
+        description="True if this email/document is a notice of contract cancellation, non-renewal declaration, service termination confirmation, or intent not to renew."
+    )
+    cancellation_reason: Optional[str] = Field(
+        default=None,
+        description="Reason or explanation for contract cancellation/non-renewal if mentioned in the notice."
+    )
+
+def is_cancellation_message(subject: str = "", text: str = "") -> bool:
+    """
+    Deterministic rule-based check to verify if email subject or text indicates contract cancellation / non-renewal.
+    """
+    combined = f"{subject or ''} {text or ''}".lower()
+    cancellation_indicators = [
+        "cancellation notice",
+        "notice of cancellation",
+        "non-renewal notice",
+        "notice of non-renewal",
+        "non renewal notice",
+        "intent not to renew",
+        "terminating agreement",
+        "termination of agreement",
+        "notice of termination",
+        "contract cancelled",
+        "contract terminated",
+        "agreement cancelled",
+        "agreement terminated",
+        "service termination",
+        "subscription cancelled",
+        "discontinue service",
+        "service discontinuation",
+        "do not renew",
+    ]
+    return any(ind in combined for ind in cancellation_indicators)
 
 def extract_contract_from_text(raw_text: str, vertical_id: str = "general_b2b") -> ContractExtractionResult:
     config = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
@@ -52,6 +87,7 @@ STRICT RULES:
 2. CALCULATE DEADLINES: Subtract notice_period_days from expiration_or_renewal_date accurately.
 3. HOW TO MAKE CHANGES: Extract specific instructions on how to make changes, amend, or terminate/cancel the contract (e.g., written notice via certified mail, notice address, designated email, notice window).
 4. CONFIDENCE SCORING: Score >= 0.85 only when vendor and dates are explicit.
+5. CANCELLATION & NON-RENEWAL: If this message represents a cancellation notice, non-renewal declaration, contract termination notice, or discontinuation of service, set is_cancellation_or_termination=true and describe cancellation_reason.
 
 {config['llm_domain_hints']}
 ALLOWED CATEGORIES: {config['categories']}
