@@ -525,12 +525,11 @@ def ingest_normalized_message(workspace_id: str, normalized_payload: Dict[str, A
         logger.exception(f"Gemini contract extraction failed for workspace {workspace_id}")
         return {"status": "error", "message": f"LLM extraction error: {str(e)}"}
 
-    # 4. Compute fingerprint_hash: (workspace_id, vendor_name/sender, contract_title/subject, content_hash)
+    # 4. Compute deterministic fingerprint_hash: (workspace_id, vendor_key, title_key)
     vendor_key = (extraction.vendor_name or parsed["sender_email"] or "unknown_vendor").strip().lower()
     title_key = (extraction.contract_title or parsed["subject"] or "untitled_contract").strip().lower()
-    content_hash = parsed["content_hash"]
 
-    fingerprint_raw = f"{workspace_id}|{vendor_key}|{title_key}|{content_hash}"
+    fingerprint_raw = f"{workspace_id}|{vendor_key}|{title_key}"
     fingerprint_hash = hashlib.sha256(fingerprint_raw.encode("utf-8")).hexdigest()
 
     # 5. Deduplication check against uq_workspace_fingerprint

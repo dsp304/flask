@@ -306,7 +306,13 @@ def init_db():
             conn.execute(text(seed_default_workspace_sql))
             conn.execute(text(seed_workspace_members_sql))
 
-        logger.info("Database initialized successfully with utf8mb4 support and dynamic migrations.")
+        # 4. Clean up any duplicate contracts in the database
+        try:
+            deduplicate_existing_contracts()
+        except Exception as dedup_ex:
+            logger.warning(f"Contract deduplication startup notice: {dedup_ex}")
+
+        logger.info("Database initialized successfully with utf8mb4 support, dynamic migrations, and contract deduplication.")
     except Exception as e:
         logger.error(f"Error during database initialization: {e}")
 
@@ -574,16 +580,26 @@ def get_user_workspaces(email: str) -> List[Dict[str, Any]]:
     """
     Retrieve workspaces that the given user email is authorized to access.
     Joins workspaces and workspace_members on lowercase email.
+    Orders user-created/owned workspaces first, so the workspace associated
+    with their login email appears by default.
     """
     if not email:
         return []
     clean_email = email.strip().lower()
     query = text("""
-        SELECT DISTINCT w.id, w.name, w.vertical_id, w.default_notice_period_days, w.created_at
+        SELECT DISTINCT w.id, w.name, w.vertical_id, w.default_notice_period_days, w.created_at, wm.role
         FROM workspaces w
         JOIN workspace_members wm ON w.id = wm.workspace_id
         WHERE LOWER(wm.email) = :email
-        ORDER BY w.created_at ASC
+        ORDER BY
+            CASE
+                -- Prioritize user's own created workspace (owner) over sample workspaces
+                WHEN wm.role = 'owner' AND w.id NOT IN ('ws_apex_property_management', 'ws_nexus_it_solutions', 'ws_metro_health_clinic', 'ws_default') THEN 0
+                WHEN wm.role = 'owner' THEN 1
+                WHEN w.id NOT IN ('ws_apex_property_management', 'ws_nexus_it_solutions', 'ws_metro_health_clinic', 'ws_default') THEN 2
+                ELSE 3
+            END,
+            w.created_at ASC
     """)
     try:
         with engine.connect() as conn:
@@ -667,6 +683,67 @@ def get_workspace_vertical(workspace_id: str) -> str:
         return "general_b2b"
 
 
+def deduplicate_existing_contracts(workspace_id: Optional[str] = None) -> int:
+    """
+    Purges duplicate contracts for the same workspace and vendor,
+    preserving only the latest record (highest id).
+    """
+    if workspace_id:
+        sql = text("""
+            DELETE c1 FROM contracts c1
+            INNER JOIN contracts c2 
+            WHERE c1.id < c2.id 
+              AND c1.workspace_id = c2.workspace_id 
+              AND c1.workspace_id = :ws_id
+              AND LOWER(TRIM(c1.vendor_name)) = LOWER(TRIM(c2.vendor_name));
+        """)
+        params = {"ws_id": workspace_id}
+    else:
+        sql = text("""
+            DELETE c1 FROM contracts c1
+            INNER JOIN contracts c2 
+            WHERE c1.id < c2.id 
+              AND c1.workspace_id = c2.workspace_id 
+              AND LOWER(TRIM(c1.vendor_name)) = LOWER(TRIM(c2.vendor_name));
+        """)
+        params = {}
+
+    try:
+        with engine.begin() as conn:
+            res = conn.execute(sql, params)
+            deleted = res.rowcount
+            if deleted > 0:
+                logger.info(f"Deduplicated contracts: removed {deleted} duplicate contract rows.")
+            return deleted
+    except Exception as e:
+        logger.warning(f"Error during contract deduplication: {e}")
+        return 0
+
+
+def find_existing_contract_id(workspace_id: str, vendor_name: Optional[str], contract_title: Optional[str] = None) -> Optional[int]:
+    """
+    Finds an existing contract id for a vendor in a workspace to prevent duplicate contracts.
+    """
+    if not vendor_name or not str(vendor_name).strip():
+        return None
+    clean_vendor = str(vendor_name).strip().lower()
+    
+    query = text("""
+        SELECT id FROM contracts
+        WHERE workspace_id = :workspace_id
+          AND LOWER(TRIM(vendor_name)) = :vendor
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(query, {"workspace_id": workspace_id, "vendor": clean_vendor}).first()
+            return int(row[0]) if row else None
+    except Exception as ex:
+        logger.warning(f"Error checking existing contract for vendor {vendor_name}: {ex}")
+        return None
+
+
 def check_duplicate_fingerprint(workspace_id: str, fingerprint_hash: str) -> bool:
     """
     Check if a contract with (workspace_id, fingerprint_hash) already exists.
@@ -711,7 +788,9 @@ def insert_contract(
     how_to_change_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Insert an extracted contract into the contracts table.
+    Insert an extracted contract into the contracts table with strict deduplication.
+    If a contract already exists for the same vendor in this workspace, updates the
+    existing record instead of creating a duplicate row.
     Enforces uq_workspace_fingerprint constraint.
     """
     # Safe field resolution from Pydantic model or dict
@@ -725,7 +804,79 @@ def insert_contract(
     att_file = attachment_filename or data.get("attachment_filename")
     att_path = attachment_path or data.get("attachment_path")
     how_change = how_to_change_summary or data.get("how_to_change_summary")
+    vendor = data.get("vendor_name")
+    title = data.get("contract_title")
 
+    params = {
+        "workspace_id": workspace_id,
+        "fingerprint_hash": fingerprint_hash,
+        "status": status,
+        "vendor_name": vendor,
+        "contract_title": title,
+        "category": data.get("category"),
+        "expiration_or_renewal_date": sanitize_date_str(data.get("expiration_or_renewal_date")),
+        "notice_period_days": data.get("notice_period_days"),
+        "calculated_cancellation_deadline": sanitize_date_str(data.get("calculated_cancellation_deadline")),
+        "auto_renewal_term_months": data.get("auto_renewal_term_months"),
+        "annual_spend_estimate": data.get("annual_spend_estimate"),
+        "currency": data.get("currency") or "USD",
+        "price_escalation_summary": data.get("price_escalation_summary"),
+        "how_to_change_summary": how_change,
+        "attachment_filename": att_file,
+        "attachment_path": att_path,
+        "coi_or_compliance_expiry": sanitize_date_str(data.get("coi_or_compliance_expiry")),
+        "key_risk_flags": json.dumps(data.get("key_risk_flags") or []),
+        "source_evidence_quote": data.get("source_evidence_quote"),
+        "confidence_score": data.get("confidence_score"),
+        "is_valid_contract_or_renewal": data.get("is_valid_contract_or_renewal", True),
+        "sender_email": sender_email[:255] if sender_email else None,
+        "email_subject": email_subject[:500] if email_subject else None,
+        "raw_content": raw_content,
+    }
+
+    # Deduplication Step 1: Check if this vendor already exists in this workspace
+    existing_id = find_existing_contract_id(workspace_id, vendor, title)
+    if existing_id:
+        logger.info(f"Existing contract {existing_id} found for vendor '{vendor}' in workspace {workspace_id}. Updating record to prevent duplicate.")
+        update_sql = text("""
+            UPDATE contracts SET
+                status = :status,
+                contract_title = COALESCE(:contract_title, contract_title),
+                category = COALESCE(:category, category),
+                expiration_or_renewal_date = COALESCE(:expiration_or_renewal_date, expiration_or_renewal_date),
+                notice_period_days = COALESCE(:notice_period_days, notice_period_days),
+                calculated_cancellation_deadline = COALESCE(:calculated_cancellation_deadline, calculated_cancellation_deadline),
+                auto_renewal_term_months = COALESCE(:auto_renewal_term_months, auto_renewal_term_months),
+                annual_spend_estimate = COALESCE(:annual_spend_estimate, annual_spend_estimate),
+                currency = COALESCE(:currency, currency),
+                price_escalation_summary = COALESCE(:price_escalation_summary, price_escalation_summary),
+                how_to_change_summary = COALESCE(:how_to_change_summary, how_to_change_summary),
+                attachment_filename = COALESCE(:attachment_filename, attachment_filename),
+                attachment_path = COALESCE(:attachment_path, attachment_path),
+                coi_or_compliance_expiry = COALESCE(:coi_or_compliance_expiry, coi_or_compliance_expiry),
+                key_risk_flags = COALESCE(:key_risk_flags, key_risk_flags),
+                source_evidence_quote = COALESCE(:source_evidence_quote, source_evidence_quote),
+                confidence_score = COALESCE(:confidence_score, confidence_score),
+                is_valid_contract_or_renewal = :is_valid_contract_or_renewal,
+                sender_email = COALESCE(:sender_email, sender_email),
+                email_subject = COALESCE(:email_subject, email_subject),
+                raw_content = COALESCE(:raw_content, raw_content),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        """)
+        update_params = dict(params)
+        update_params["id"] = existing_id
+        with engine.begin() as conn:
+            conn.execute(update_sql, update_params)
+        return {
+            "id": existing_id,
+            "workspace_id": workspace_id,
+            "fingerprint_hash": fingerprint_hash,
+            "status": status,
+            "is_update": True,
+        }
+
+    # Deduplication Step 2: Insert with ON DUPLICATE KEY UPDATE on uq_workspace_fingerprint
     insert_sql = text("""
     INSERT INTO contracts (
         workspace_id,
@@ -778,38 +929,35 @@ def insert_contract(
         :email_subject,
         :raw_content
     )
+    ON DUPLICATE KEY UPDATE
+        status = VALUES(status),
+        vendor_name = VALUES(vendor_name),
+        contract_title = VALUES(contract_title),
+        category = VALUES(category),
+        expiration_or_renewal_date = VALUES(expiration_or_renewal_date),
+        notice_period_days = VALUES(notice_period_days),
+        calculated_cancellation_deadline = VALUES(calculated_cancellation_deadline),
+        auto_renewal_term_months = VALUES(auto_renewal_term_months),
+        annual_spend_estimate = VALUES(annual_spend_estimate),
+        currency = VALUES(currency),
+        price_escalation_summary = VALUES(price_escalation_summary),
+        how_to_change_summary = VALUES(how_to_change_summary),
+        attachment_filename = VALUES(attachment_filename),
+        attachment_path = VALUES(attachment_path),
+        coi_or_compliance_expiry = VALUES(coi_or_compliance_expiry),
+        key_risk_flags = VALUES(key_risk_flags),
+        source_evidence_quote = VALUES(source_evidence_quote),
+        confidence_score = VALUES(confidence_score),
+        is_valid_contract_or_renewal = VALUES(is_valid_contract_or_renewal),
+        sender_email = VALUES(sender_email),
+        email_subject = VALUES(email_subject),
+        raw_content = VALUES(raw_content),
+        updated_at = CURRENT_TIMESTAMP
     """)
-
-    params = {
-        "workspace_id": workspace_id,
-        "fingerprint_hash": fingerprint_hash,
-        "status": status,
-        "vendor_name": data.get("vendor_name"),
-        "contract_title": data.get("contract_title"),
-        "category": data.get("category"),
-        "expiration_or_renewal_date": sanitize_date_str(data.get("expiration_or_renewal_date")),
-        "notice_period_days": data.get("notice_period_days"),
-        "calculated_cancellation_deadline": sanitize_date_str(data.get("calculated_cancellation_deadline")),
-        "auto_renewal_term_months": data.get("auto_renewal_term_months"),
-        "annual_spend_estimate": data.get("annual_spend_estimate"),
-        "currency": data.get("currency") or "USD",
-        "price_escalation_summary": data.get("price_escalation_summary"),
-        "how_to_change_summary": how_change,
-        "attachment_filename": att_file,
-        "attachment_path": att_path,
-        "coi_or_compliance_expiry": sanitize_date_str(data.get("coi_or_compliance_expiry")),
-        "key_risk_flags": json.dumps(data.get("key_risk_flags") or []),
-        "source_evidence_quote": data.get("source_evidence_quote"),
-        "confidence_score": data.get("confidence_score"),
-        "is_valid_contract_or_renewal": data.get("is_valid_contract_or_renewal", True),
-        "sender_email": sender_email[:255] if sender_email else None,
-        "email_subject": email_subject[:500] if email_subject else None,
-        "raw_content": raw_content,
-    }
 
     with engine.begin() as conn:
         result = conn.execute(insert_sql, params)
-        contract_id = result.lastrowid
+        contract_id = result.lastrowid or existing_id
 
     return {
         "id": contract_id,
@@ -1664,11 +1812,7 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
         if user_email and user_email.strip():
             emails_to_add.add(user_email.strip().lower())
 
-        member_rows = conn.execute(text("SELECT DISTINCT email FROM workspace_members")).fetchall()
-        for r in member_rows:
-            if r[0] and "@" in r[0]:
-                emails_to_add.add(r[0].strip().lower())
-
+        # Include standard test / admin emails only (do not pollute user accounts)
         emails_to_add.add("admin@contractwatchdog.com")
         emails_to_add.add("demo@contractwatchdog.com")
         emails_to_add.add("user@workspace.com")
@@ -1720,9 +1864,20 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                     ON DUPLICATE KEY UPDATE role = 'owner'
                 """), {"ws_id": ws_id, "email": em})
 
+            # Clean any existing duplicate contracts in this workspace first
+            conn.execute(text("""
+                DELETE c1 FROM contracts c1
+                INNER JOIN contracts c2 
+                WHERE c1.id < c2.id 
+                  AND c1.workspace_id = c2.workspace_id 
+                  AND c1.workspace_id = :ws_id
+                  AND LOWER(TRIM(c1.vendor_name)) = LOWER(TRIM(c2.vendor_name));
+            """), {"ws_id": ws_id})
+
             contracts_seeded = []
             for c in ws["contracts"]:
-                fp_raw = f"{ws_id}_{c['vendor_name']}_{c['expiration_or_renewal_date'].isoformat()}"
+                clean_vendor = c["vendor_name"].strip().lower()
+                fp_raw = f"{ws_id}_{clean_vendor}"
                 fp_hash = hashlib.sha256(fp_raw.encode("utf-8")).hexdigest()[:32]
 
                 insert_sql = text("""
@@ -1754,12 +1909,18 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                         calculated_cancellation_deadline = VALUES(calculated_cancellation_deadline),
                         auto_renewal_term_months = VALUES(auto_renewal_term_months),
                         annual_spend_estimate = VALUES(annual_spend_estimate),
+                        currency = VALUES(currency),
                         price_escalation_summary = VALUES(price_escalation_summary),
                         how_to_change_summary = VALUES(how_to_change_summary),
                         attachment_filename = VALUES(attachment_filename),
                         coi_or_compliance_expiry = VALUES(coi_or_compliance_expiry),
                         key_risk_flags = VALUES(key_risk_flags),
                         source_evidence_quote = VALUES(source_evidence_quote),
+                        confidence_score = VALUES(confidence_score),
+                        is_valid_contract_or_renewal = VALUES(is_valid_contract_or_renewal),
+                        sender_email = VALUES(sender_email),
+                        email_subject = VALUES(email_subject),
+                        raw_content = VALUES(raw_content),
                         updated_at = CURRENT_TIMESTAMP
                 """)
 

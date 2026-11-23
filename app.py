@@ -39,6 +39,8 @@ from db import (
     approve_and_update_contract,
     check_duplicate_fingerprint,
     insert_contract,
+    find_existing_contract_id,
+    deduplicate_existing_contracts,
     encrypt_token,
     decrypt_token,
     add_workspace_member,
@@ -353,14 +355,18 @@ def auth_login():
         session["user_name"] = profile.get("full_name") or email.split("@")[0]
         session["full_name"] = profile.get("full_name")
 
-        # Check existing workspaces; if none, auto-seed sample workspaces so user can test immediately
+        # Check existing workspaces; if user has workspaces, show the dashboard with the workspace
+        # associated with the login email address by default.
+        # Otherwise, ask the user to setup a new workspace.
         workspaces = get_user_workspaces(email)
         if not workspaces:
-            seed_sample_workspaces_and_contracts(email)
-            workspaces = get_user_workspaces(email)
+            flash("Welcome! Please set up your first workspace to start monitoring contracts.", "info")
+            return redirect(url_for("onboarding", vertical=vertical_id))
 
+        primary_workspace_id = workspaces[0]["id"]
+        session["active_workspace_id"] = primary_workspace_id
         flash(f"Signed in successfully as {email}.", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("dashboard", workspace_id=primary_workspace_id))
 
     return render_template(
         "auth_login.html",
@@ -409,10 +415,12 @@ def auth_google():
 
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
-        seed_sample_workspaces_and_contracts(mock_email)
-        workspaces = get_user_workspaces(mock_email)
+        flash("Welcome! Please set up your first workspace to start monitoring contracts.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
+    primary_workspace_id = workspaces[0]["id"]
+    session["active_workspace_id"] = primary_workspace_id
     flash(f"Signed in with Google as {mock_email}.", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("dashboard", workspace_id=primary_workspace_id))
 
 
 @app.route("/auth/microsoft", methods=["GET"])
@@ -453,10 +461,12 @@ def auth_microsoft():
 
     workspaces = get_user_workspaces(mock_email)
     if not workspaces:
-        seed_sample_workspaces_and_contracts(mock_email)
-        workspaces = get_user_workspaces(mock_email)
+        flash("Welcome! Please set up your first workspace to start monitoring contracts.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
+    primary_workspace_id = workspaces[0]["id"]
+    session["active_workspace_id"] = primary_workspace_id
     flash(f"Signed in with Microsoft as {mock_email}.", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("dashboard", workspace_id=primary_workspace_id))
 
 
 @app.route("/auth/callback", methods=["GET"])
@@ -484,11 +494,12 @@ def auth_callback(provider: str = "google"):
 
     workspaces = get_user_workspaces(email)
     if not workspaces:
-        seed_sample_workspaces_and_contracts(email)
-        workspaces = get_user_workspaces(email)
-
+        flash("OAuth connection established. Please set up your first workspace to start monitoring contracts.", "info")
+        return redirect(url_for("onboarding", vertical=vertical_id))
+    primary_workspace_id = workspaces[0]["id"]
+    session["active_workspace_id"] = primary_workspace_id
     flash(f"OAuth connection established for {email}.", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("dashboard", workspace_id=primary_workspace_id))
 
 
 @app.route("/profile", methods=["GET", "POST"])
@@ -544,9 +555,12 @@ def user_profile():
         if is_setup:
             workspaces = get_user_workspaces(user_email)
             if not workspaces:
-                seed_sample_workspaces_and_contracts(user_email)
-            flash(f"Welcome, {full_name}! Sample workspaces and contracts loaded for testing.", "success")
-            return redirect(url_for("dashboard", workspace_id="ws_apex_property_management"))
+                flash(f"Welcome, {full_name}! Please set up your first workspace to start monitoring contracts.", "info")
+                return redirect(url_for("onboarding", vertical=vertical_id))
+            primary_ws_id = workspaces[0]["id"]
+            session["active_workspace_id"] = primary_ws_id
+            flash(f"Welcome, {full_name}!", "success")
+            return redirect(url_for("dashboard", workspace_id=primary_ws_id))
 
         flash("Profile updated successfully.", "success")
         return redirect(url_for("user_profile"))
@@ -609,7 +623,7 @@ def dashboard():
         return redirect(url_for("onboarding"))
 
     # 4. Resolve requested workspace and enforce access scoping
-    # If no workspace requested, show the first created workspace by default (user_workspaces[0])
+    # If no workspace requested, show the workspace associated with the login email address by default (user_workspaces[0])
     requested_ws_id = request.args.get("workspace_id")
     if requested_ws_id:
         if not can_user_access_workspace(user_email, requested_ws_id):
@@ -617,6 +631,8 @@ def dashboard():
             requested_ws_id = user_workspaces[0]["id"]
     else:
         requested_ws_id = user_workspaces[0]["id"]
+
+    session["active_workspace_id"] = requested_ws_id
 
     return render_dashboard_view(workspace_id=requested_ws_id, is_demo=False, user_workspaces=user_workspaces)
 
@@ -959,13 +975,12 @@ def inbound_email_webhook():
         logger.exception(f"Gemini extraction failed for workspace {workspace_id}")
         return jsonify({"error": f"LLM contract extraction failed: {str(e)}"}), 502
 
-    # 5. Compute SHA-256 fingerprint_hash:
-    # (workspace_id, vendor_name/sender, contract_title/subject, content_hash)
+    # 5. Compute deterministic SHA-256 fingerprint_hash (workspace_id, vendor_key, title_key)
+    # Deduplicates subsequent emails or reminders for the same vendor/agreement
     vendor_key = (extraction.vendor_name or parsed["sender_email"] or "unknown_vendor").strip().lower()
     title_key = (extraction.contract_title or parsed["subject"] or "untitled_contract").strip().lower()
-    content_hash = parsed["content_hash"]
 
-    fingerprint_raw = f"{workspace_id}|{vendor_key}|{title_key}|{content_hash}"
+    fingerprint_raw = f"{workspace_id}|{vendor_key}|{title_key}"
     fingerprint_hash = hashlib.sha256(fingerprint_raw.encode("utf-8")).hexdigest()
 
     # 6. Deduplication check against uq_workspace_fingerprint
@@ -1204,27 +1219,31 @@ def admin_reset_data():
     }), 200
 
 
-@app.route("/api/admin/seed-sample-workspaces", methods=["GET", "POST"])
+@app.route("/workspaces/refresh", methods=["GET", "POST"])
 @app.route("/api/sample-data/seed", methods=["GET", "POST"])
+@app.route("/api/admin/seed-sample-workspaces", methods=["GET", "POST"])
 @app.route("/api/admin/seed-apex-contracts", methods=["GET", "POST"])
-def admin_seed_sample_workspaces():
+def refresh_workspace_data():
     """
-    Seeds 3 rich sample workspaces (Apex Property Management, Nexus Cloud & IT, Metro Health)
-    with 12 contracts featuring cancellation procedures, risk flags, and PDF attachments.
-    Associates current user or specified email so they appear in workspace switcher.
+    Refresh contracts for sample workspaces and current workspace.
+    After refresh, returns to the same workspace as before.
     """
-    user_email = session.get("user_email") or request.args.get("email") or "user@workspace.com"
+    target_ws = request.args.get("workspace_id") or session.get("active_workspace_id") or "ws_apex_property_management"
+    user_email = session.get("user_email") or request.args.get("email")
+
     result = seed_sample_workspaces_and_contracts(user_email=user_email)
+    deduplicate_existing_contracts()
 
     if request.is_json or request.headers.get("Accept") == "application/json":
         return jsonify({
             "status": "success",
-            "message": f"Successfully seeded {result['total_contracts']} contracts across {result['workspaces_count']} workspaces.",
+            "message": f"Successfully refreshed {result['total_contracts']} contracts across {result['workspaces_count']} workspaces.",
             "data": result,
+            "target_workspace_id": target_ws,
         }), 200
 
-    flash(f"Loaded {result['workspaces_count']} sample workspaces with {result['total_contracts']} contracts and PDF attachments!", "success")
-    return redirect(url_for("dashboard", workspace_id="ws_apex_property_management"))
+    flash("Contracts refreshed successfully.", "success")
+    return redirect(url_for("dashboard", workspace_id=target_ws))
 
 
 if __name__ == "__main__":
