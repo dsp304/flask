@@ -299,8 +299,8 @@
       </div>
     </div>
 
-    <!-- Free Tier Upgrade Banner (Shown if workspace is on Free plan and not demo) -->
-    {% if plan_tier != 'pro' and not is_demo %}
+    <!-- Free Tier Upgrade Banner (Shown if workspace is on Free plan) -->
+    {% if plan_tier != 'pro' %}
     <div class="bg-gradient-to-r from-indigo-50/80 via-white to-indigo-50/50 dark:from-indigo-950/40 dark:via-slate-900 dark:to-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
       <div class="flex items-start space-x-3.5">
         <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20">
@@ -310,10 +310,26 @@
         </div>
         <div class="space-y-0.5">
           <div class="flex items-center space-x-2">
-            <span class="font-bold text-sm text-slate-900 dark:text-white">Free Starter Plan: {{ active_contracts|length }} of 5 Contracts Used</span>
-            <span class="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">Current</span>
+            <span class="font-bold text-sm text-slate-900 dark:text-white">
+              {% if is_demo %}
+                Free Starter Plan (Demo Mode): {{ active_contracts|length }} of 5 Contracts Used
+              {% else %}
+                Free Starter Plan: {{ active_contracts|length }} of 5 Contracts Used
+              {% endif %}
+            </span>
+            {% if is_demo %}
+              <span class="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Demo</span>
+            {% else %}
+              <span class="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">Current</span>
+            {% endif %}
+            {% if active_contracts|length >= 5 %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700">Limit Reached</span>
+            {% endif %}
           </div>
           <p class="text-xs text-slate-600 dark:text-slate-400">
+            {% if excess_contracts_count > 0 %}
+              <span class="text-amber-600 dark:text-amber-400 font-semibold">{{ excess_contracts_count }} additional contract{% if excess_contracts_count > 1 %}s{% endif %} locked.</span>
+            {% endif %}
             Upgrade to Pro ($49/mo) to unlock unlimited monitored contracts, multi-property workspaces, and certified mail cancellation tools.
           </p>
         </div>

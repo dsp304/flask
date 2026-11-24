@@ -148,8 +148,20 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
     except Exception as cal_err:
         logger.warning(f"Auto calendar reminder setup notice for workspace {workspace_id}: {cal_err}")
 
+    plan_tier = "free"
+    if not is_demo and current_workspace:
+        plan_tier = current_workspace.get("plan_tier") or get_workspace_plan(workspace_id) or "free"
+
     active_contracts, review_contracts = get_dashboard_contracts(workspace_id)
-    cancelled_contracts = get_cancelled_contracts(workspace_id) if not is_demo else []
+    cancelled_contracts = get_cancelled_contracts(workspace_id)
+
+    # Free Tier Contract Limit Enforcement:
+    # A user on the Free tier is strictly limited to 5 monitored contracts.
+    free_tier_contract_limit = 5
+    excess_contracts_count = 0
+    if plan_tier == "free" and len(active_contracts) > free_tier_contract_limit:
+        excess_contracts_count = len(active_contracts) - free_tier_contract_limit
+        active_contracts = active_contracts[:free_tier_contract_limit]
 
     total_spend = sum(
         float(c.get("annual_spend_estimate") or 0.0)
@@ -173,10 +185,6 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
                 c_copy["annual_spend_estimate"] = str(c_copy["annual_spend_estimate"])
         combined_contracts.append(c_copy)
 
-    plan_tier = "free"
-    if not is_demo and current_workspace:
-        plan_tier = current_workspace.get("plan_tier") or get_workspace_plan(workspace_id) or "free"
-
     return render_template(
         "dashboard.html",
         active_nav="dashboard",
@@ -188,6 +196,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
         active_contracts=active_contracts,
         review_contracts=review_contracts,
         cancelled_contracts=cancelled_contracts,
+        excess_contracts_count=excess_contracts_count,
         all_contracts_json=json.dumps(combined_contracts, default=str),
         total_spend=total_spend,
         critical_deadlines=critical_deadlines,
@@ -745,6 +754,18 @@ def approve_contract(contract_id: int):
             return jsonify({"error": "Access denied: Unauthorized workspace"}), 403
         flash("Access denied: You do not have permission to modify contracts in this workspace.", "error")
         return redirect(url_for("dashboard"))
+
+    # Enforce Free Starter plan 5-contract limit
+    ws_plan = get_workspace_plan(contract["workspace_id"])
+    if ws_plan == "free" and contract.get("status") != "active":
+        active_c, _ = get_dashboard_contracts(contract["workspace_id"])
+        if len(active_c) >= 5:
+            if request.is_json:
+                return jsonify({
+                    "error": "Free Starter plan limit reached (5 of 5 contracts monitored). Upgrade to Pro ($49/month) to monitor unlimited contracts."
+                }), 400
+            flash("Free Starter plan limit reached (5 of 5 contracts monitored). Upgrade to Pro ($49/month) to monitor unlimited contracts.", "warning")
+            return redirect(url_for("dashboard", workspace_id=contract["workspace_id"]))
 
     if request.is_json:
         data = request.get_json()
