@@ -4,7 +4,9 @@ import json
 import hashlib
 import logging
 import urllib.parse
-from datetime import datetime, date
+import urllib.request
+import urllib.error
+from datetime import datetime, date, timezone, timedelta
 from flask import (
     Flask,
     request,
@@ -523,26 +525,93 @@ def auth_callback(provider: str = "google"):
     code = request.args.get("code")
     vertical_id = request.args.get("state") or "general_b2b"
 
-    email = request.args.get("email") or session.get("user_email") or f"{provider}_user@company.com"
+    email = None
+    full_name = None
+    access_token = None
+    refresh_token = None
+    token_expiry = None
+
+    # Handle live Google OAuth token exchange if code & credentials exist
+    if provider == "google" and code:
+        client_id = os.environ.get("GOOGLE_CLIENT_ID")
+        client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+        if client_id and client_secret:
+            try:
+                redirect_uri = url_for("auth_callback", provider="google", _external=True)
+                token_data = urllib.parse.urlencode({
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code"
+                }).encode("utf-8")
+                token_req = urllib.request.Request(
+                    "https://oauth2.googleapis.com/token",
+                    data=token_data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                with urllib.request.urlopen(token_req, timeout=10) as resp:
+                    tokens = json.loads(resp.read().decode("utf-8"))
+                    access_token = tokens.get("access_token")
+                    refresh_token = tokens.get("refresh_token")
+                    expires_in = tokens.get("expires_in", 3600)
+                    token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+                # Fetch real email & name from Google's userinfo endpoint
+                if access_token:
+                    user_req = urllib.request.Request(
+                        "https://www.googleapis.com/oauth2/v2/userinfo",
+                        headers={"Authorization": f"Bearer {access_token}"}
+                    )
+                    with urllib.request.urlopen(user_req, timeout=10) as uresp:
+                        user_info = json.loads(uresp.read().decode("utf-8"))
+                        email = (user_info.get("email") or "").strip().lower()
+                        full_name = user_info.get("name")
+            except Exception as oauth_err:
+                logger.error(f"Error during Google OAuth token exchange: {oauth_err}")
+                flash("Google sign-in could not be completed. You can sign in directly with your email below.", "error")
+                return redirect(url_for("auth_login", vertical=vertical_id))
+
+    if not email:
+        email = request.args.get("email") or session.get("user_email") or f"{provider}_user@company.com"
     email = email.strip().lower()
     session["user_email"] = email
 
     profile = get_user_profile(email)
     if not profile or not profile.get("full_name"):
-        session["user_name"] = email.split("@")[0]
-        flash("OAuth connection established. Please complete your profile to continue.", "info")
+        resolved_name = full_name or email.split("@")[0]
+        session["user_name"] = resolved_name
+        if full_name:
+            save_user_profile(email, full_name=full_name, company="", role="", phone="")
+        flash("Welcome! Please complete your profile to continue.", "info")
         return redirect(url_for("user_profile", setup="1", vertical=vertical_id))
 
-    session["user_name"] = profile.get("full_name") or email.split("@")[0]
-    session["full_name"] = profile.get("full_name")
+    session["user_name"] = profile.get("full_name") or full_name or email.split("@")[0]
+    session["full_name"] = profile.get("full_name") or full_name
 
     workspaces = get_user_workspaces(email)
     if not workspaces:
-        flash("OAuth connection established. Please set up your first workspace to start monitoring contracts.", "info")
+        flash("Welcome! Please set up your first workspace to start monitoring contracts.", "info")
         return redirect(url_for("onboarding", vertical=vertical_id))
     primary_workspace_id = workspaces[0]["id"]
     session["active_workspace_id"] = primary_workspace_id
-    flash(f"OAuth connection established for {email}.", "success")
+
+    # If real tokens were obtained, persist into oauth_connections for the workspace
+    if access_token:
+        try:
+            save_oauth_connection(
+                workspace_id=primary_workspace_id,
+                provider=provider,
+                email=email,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_expiry=token_expiry,
+                scopes="https://www.googleapis.com/auth/gmail.readonly"
+            )
+        except Exception as conn_err:
+            logger.warning(f"Failed to persist OAuth connection: {conn_err}")
+
+    flash(f"Signed in as {email}.", "success")
     return redirect(url_for("dashboard", workspace_id=primary_workspace_id))
 
 
