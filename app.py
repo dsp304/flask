@@ -368,51 +368,21 @@ def landing_logistics():
 # ---------------------------------------------------------------------------
 # Task 7 Authentication & Multi-Email Session Routes
 # ---------------------------------------------------------------------------
-@app.route("/auth/login", methods=["GET", "POST"])
+# Authentication Routes (OAuth-Only: Google Workspace & Microsoft 365)
+# ---------------------------------------------------------------------------
+@app.route("/auth/login", methods=["GET"])
 def auth_login():
     """
-    Unified OAuth & Work Email Sign-In Entry Point.
+    Strict OAuth Sign-In Entry Point (Google Workspace & Microsoft 365).
     Accepts vertical query parameter from 'Start Free Contract Review' or 'Sign-in'.
     """
-    vertical_id = (request.args.get("vertical") or request.form.get("vertical") or "general_b2b").strip()
+    vertical_id = (request.args.get("vertical") or "general_b2b").strip()
     if vertical_id not in VERTICAL_CONFIGS:
         vertical_id = "general_b2b"
 
     # If already logged in, redirect directly to dashboard
-    if session.get("user_email") and request.method == "GET":
+    if session.get("user_email"):
         return redirect(url_for("dashboard"))
-
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        if not email or "@" not in email or "." not in email:
-            flash("Please enter a valid work email address.", "error")
-            return redirect(url_for("auth_login", vertical=vertical_id))
-
-        session["user_email"] = email
-        logger.info(f"User authenticated with work email: {email}")
-
-        # Check if user has completed initial profile setup
-        profile = get_user_profile(email)
-        if not profile or not profile.get("full_name"):
-            session["user_name"] = email.split("@")[0]
-            flash("Welcome! Please complete your profile to continue.", "info")
-            return redirect(url_for("user_profile", setup="1", vertical=vertical_id))
-
-        session["user_name"] = profile.get("full_name") or email.split("@")[0]
-        session["full_name"] = profile.get("full_name")
-
-        # Check existing workspaces; if user has workspaces, show the dashboard with the workspace
-        # associated with the login email address by default.
-        # Otherwise, ask the user to setup a new workspace.
-        workspaces = get_user_workspaces(email)
-        if not workspaces:
-            flash("Welcome! Please set up your first workspace to start monitoring contracts.", "info")
-            return redirect(url_for("onboarding", vertical=vertical_id))
-
-        primary_workspace_id = workspaces[0]["id"]
-        session["active_workspace_id"] = primary_workspace_id
-        flash(f"Signed in successfully as {email}.", "success")
-        return redirect(url_for("dashboard", workspace_id=primary_workspace_id))
 
     return render_template(
         "auth_login.html",
@@ -427,13 +397,14 @@ def auth_google():
     """
     Initiate Google Workspace OAuth flow.
     Supports live Google OAuth credentials when configured, with simulated dev fallback.
+    Requests both Gmail read-only access and Calendar write access.
     """
     vertical_id = (request.args.get("vertical") or "general_b2b").strip()
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID")
     
     if google_client_id:
         redirect_uri = url_for("auth_callback", provider="google", _external=True)
-        scope = "openid email profile https://www.googleapis.com/auth/gmail.readonly"
+        scope = "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events"
         auth_url = (
             f"https://accounts.google.com/o/oauth2/v2/auth?"
             f"client_id={google_client_id}&"
@@ -474,13 +445,14 @@ def auth_microsoft():
     """
     Initiate Microsoft Entra ID / M365 OAuth flow.
     Supports live Microsoft OAuth credentials when configured, with simulated dev fallback.
+    Requests both Mail.Read and Calendars.ReadWrite access.
     """
     vertical_id = (request.args.get("vertical") or "general_b2b").strip()
     ms_client_id = os.environ.get("MICROSOFT_CLIENT_ID")
 
     if ms_client_id:
         redirect_uri = url_for("auth_callback", provider="microsoft", _external=True)
-        scope = "openid email profile Mail.Read offline_access"
+        scope = "openid email profile Mail.Read Calendars.ReadWrite offline_access"
         auth_url = (
             f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?"
             f"client_id={ms_client_id}&"
@@ -569,7 +541,48 @@ def auth_callback(provider: str = "google"):
                         full_name = user_info.get("name")
             except Exception as oauth_err:
                 logger.error(f"Error during Google OAuth token exchange: {oauth_err}")
-                flash("Google sign-in could not be completed. You can sign in directly with your email below.", "error")
+                flash("Google sign-in could not be completed. Please try again.", "error")
+                return redirect(url_for("auth_login", vertical=vertical_id))
+
+    # Handle live Microsoft OAuth token exchange if code & credentials exist
+    if provider == "microsoft" and code:
+        client_id = os.environ.get("MICROSOFT_CLIENT_ID")
+        client_secret = os.environ.get("MICROSOFT_CLIENT_SECRET")
+        if client_id and client_secret:
+            try:
+                redirect_uri = url_for("auth_callback", provider="microsoft", _external=True)
+                token_data = urllib.parse.urlencode({
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code"
+                }).encode("utf-8")
+                token_req = urllib.request.Request(
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                    data=token_data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                with urllib.request.urlopen(token_req, timeout=10) as resp:
+                    tokens = json.loads(resp.read().decode("utf-8"))
+                    access_token = tokens.get("access_token")
+                    refresh_token = tokens.get("refresh_token")
+                    expires_in = tokens.get("expires_in", 3600)
+                    token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+                # Fetch real email & name from Microsoft Graph
+                if access_token:
+                    user_req = urllib.request.Request(
+                        "https://graph.microsoft.com/v1.0/me",
+                        headers={"Authorization": f"Bearer {access_token}"}
+                    )
+                    with urllib.request.urlopen(user_req, timeout=10) as uresp:
+                        user_info = json.loads(uresp.read().decode("utf-8"))
+                        email = (user_info.get("mail") or user_info.get("userPrincipalName") or "").strip().lower()
+                        full_name = user_info.get("displayName")
+            except Exception as oauth_err:
+                logger.error(f"Error during Microsoft OAuth token exchange: {oauth_err}")
+                flash("Microsoft sign-in could not be completed. Please try again.", "error")
                 return redirect(url_for("auth_login", vertical=vertical_id))
 
     if not email:
@@ -599,6 +612,11 @@ def auth_callback(provider: str = "google"):
     # If real tokens were obtained, persist into oauth_connections for the workspace
     if access_token:
         try:
+            scopes = (
+                "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events"
+                if provider == "google"
+                else "Mail.Read Calendars.ReadWrite"
+            )
             save_oauth_connection(
                 workspace_id=primary_workspace_id,
                 provider=provider,
@@ -606,7 +624,7 @@ def auth_callback(provider: str = "google"):
                 access_token=access_token,
                 refresh_token=refresh_token,
                 token_expiry=token_expiry,
-                scopes="https://www.googleapis.com/auth/gmail.readonly"
+                scopes=scopes
             )
         except Exception as conn_err:
             logger.warning(f"Failed to persist OAuth connection: {conn_err}")

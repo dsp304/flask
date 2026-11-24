@@ -287,6 +287,50 @@ def setup_calendar_reminder_for_contract(
                             logger.info(f"Live Google Calendar event created for contract #{contract_id}.")
                 except Exception as gcal_err:
                     logger.info(f"Live Google Calendar API call note (using standard calendar invite fallback): {gcal_err}")
+
+            # Also check Microsoft Graph Calendar API connection
+            ms_conn = get_oauth_connection(ws_id, "microsoft")
+            if api_sync_status == "simulated" and ms_conn and ms_conn.get("access_token"):
+                access_token = ms_conn["access_token"]
+                logger.info(f"Attempting live Microsoft Calendar API event creation for contract #{contract_id}...")
+                if isinstance(deadline, (datetime, date)):
+                    date_str = deadline.strftime("%Y-%m-%d")
+                else:
+                    date_str = str(deadline)[:10]
+
+                ms_event_payload = {
+                    "subject": f"🚨 Contract Cancellation Cutoff: {contract.get('vendor_name')} ({contract.get('contract_title')})",
+                    "body": {
+                        "contentType": "Text",
+                        "content": contract.get("how_to_change_summary") or "Contract cancellation deadline reminder."
+                    },
+                    "start": {
+                        "dateTime": f"{date_str}T09:00:00",
+                        "timeZone": "UTC"
+                    },
+                    "end": {
+                        "dateTime": f"{date_str}T10:00:00",
+                        "timeZone": "UTC"
+                    },
+                    "reminderMinutesBeforeStart": 1440,
+                    "isReminderOn": True
+                }
+                ms_req = urllib.request.Request(
+                    "https://graph.microsoft.com/v1.0/me/events",
+                    data=json.dumps(ms_event_payload).encode("utf-8"),
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(ms_req, timeout=5) as resp:
+                        if resp.status in (200, 201):
+                            api_sync_status = "microsoft_synced"
+                            logger.info(f"Live Microsoft Calendar event created for contract #{contract_id}.")
+                except Exception as mscal_err:
+                    logger.info(f"Live Microsoft Calendar API call note: {mscal_err}")
         except Exception as oauth_err:
             logger.debug(f"OAuth check notice: {oauth_err}")
 
