@@ -1,5 +1,5 @@
 """
-Vertical Configurations for Contract Renewal Watchdog.
+Vertical Configurations for TermPatrol.
 Contains domain-specific keyword dictionaries, LLM review guidelines,
 and tailored landing page configurations for Task 5.
 """
@@ -60,7 +60,7 @@ INDUSTRY TRAPS TO PRIORITIZE:
         "route_path": "/dental-clinics",
         "default_alert_lead_days": 60,
         "headline": "Stop Overpaying on Imaging Leases & Medical Waste Auto-Rollovers",
-        "subheadline": "Automated contract watchdog for dentists, surgeons, and medical practices. Track CBCT imaging systems, autoclave service, EMR subscriptions, and biohazard pickups before strict buyout notice windows close.",
+        "subheadline": "TermPatrol automated contract intelligence for dentists, surgeons, and medical practices. Track CBCT imaging systems, autoclave service, EMR subscriptions, and biohazard pickups before strict buyout notice windows close.",
         "roi_hook": "Eliminate $18,500 in unwanted 12-month equipment lease rollovers and avoid predatory practice management termination penalties.",
         "trust_strip": "Safeguarding 250+ private practices, orthodontists, and dental service organizations nationwide.",
         "trust_badges": ["Henry Schein Verified", "Patterson Lease Verified", "HIPAA-Safe Architecture", "Biohazard Watchlist", "ADA Vendor Compatible"],
@@ -159,7 +159,7 @@ INDUSTRY TRAPS TO PRIORITIZE:
         "route_path": "/logistics",
         "default_alert_lead_days": 45,
         "headline": "Eliminate Surprise Forklift Extension Fees & Expiring Freight Rate Tables",
-        "subheadline": "Contract watchdog built for distribution centers, third-party logistics, and manufacturing plants. Catch strict equipment return deadlines, pallet wrapper leases, and carrier fuel surcharge hikes.",
+        "subheadline": "TermPatrol contract intelligence built for distribution centers, third-party logistics, and manufacturing plants. Catch strict equipment return deadlines, pallet wrapper leases, and carrier fuel surcharge hikes.",
         "roi_hook": "Prevent $24,000 in unexpected forklift month-to-month penalties and keep freight rate tables locked in ahead of expiration.",
         "trust_strip": "Defending 95+ distribution centers, 3PL facilities, and manufacturing plants across North America.",
         "trust_badges": ["WERC Compliant", "OSHA Fleet Safeguard", "SupplyChain 24/7 Verified", "MHI Partner Network", "FreightWatch Active"],
@@ -208,7 +208,7 @@ INDUSTRY TRAPS TO PRIORITIZE:
         "route_path": "/",
         "default_alert_lead_days": 30,
         "headline": "Never Miss a B2B Contract Renewal or Silent SaaS Price Hike Again",
-        "subheadline": "The AI-powered contract watchdog for growing businesses. Forward vendor renewal emails, invoices, and service agreements. Our AI extracts notice deadlines, calculates exact cancellation cutoffs, and alerts your team before evergreen renewals lock in.",
+        "subheadline": "TermPatrol is the AI-powered contract renewal monitor for growing businesses. Forward vendor renewal emails, invoices, and service agreements. Our AI extracts notice deadlines, calculates exact cancellation cutoffs, and alerts your team before evergreen renewals lock in.",
         "roi_hook": "The average B2B business saves $32,000 annually by stopping unused software subscriptions and auto-renewing vendor lock-ins.",
         "trust_strip": "Monitoring $48M+ in active vendor spend across 500+ fast-growing organizations.",
         "trust_badges": ["Google Gemini 3.5 AI", "Fernet Token Encryption", "SOC 2 Ready Architecture", "Postmark Direct Integration", "Zero Setup Required"],

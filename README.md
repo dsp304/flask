@@ -1,5 +1,5 @@
-# Flask
-A minimal [Flask](https://flask.palletsprojects.com/) web application, served by [Gunicorn](https://docs.gunicorn.org/), and ready to deploy on [Railway](https://railway.com/?referralCode=alphasec) or Vercel.
+# TermPatrol (termpatrol.com)
+AI-powered contract renewal and procurement risk intelligence platform built with [Flask](https://flask.palletsprojects.com/) and Google Gemini, served by [Gunicorn](https://docs.gunicorn.org/), and deployed on [Railway](https://railway.com/).
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/igzwwg?referralCode=alphasec)
 

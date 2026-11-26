@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Onboarding · Setup Workspace & Vertical{% endblock %}
+{% block title %}Onboarding · Setup Workspace · TermPatrol{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto space-y-8">
@@ -57,7 +57,7 @@
                 </span>
               {% endfor %}
             {% else %}
-              <span class="font-mono text-slate-800 dark:text-slate-200">{{ session.get('user_email', 'admin@contractwatchdog.com') }}</span>
+              <span class="font-mono text-slate-800 dark:text-slate-200">{{ session.get('user_email', 'admin@termpatrol.com') }}</span>
             {% endif %}
           </div>
         </div>
@@ -75,7 +75,7 @@
         Forward vendor renewal notices, leases, invoices, or contracts to this address:
       </p>
       <div class="flex items-center justify-between bg-white dark:bg-slate-900 px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono text-sm text-slate-900 dark:text-white">
-        <span id="created-inbound-addr">watchdog+{{ created_workspace.id }}@{{ request.host }}</span>
+        <span id="created-inbound-addr">contracts+{{ created_workspace.id }}@termpatrol.com</span>
         <button onclick="copyText('created-inbound-addr')" class="ml-3 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded font-semibold text-xs transition">
           Copy Email
         </button>
@@ -222,7 +222,7 @@
             type="email" 
             id="creator_email" 
             name="creator_email" 
-            value="{{ session.get('user_email', 'admin@contractwatchdog.com') }}" 
+            value="{{ session.get('user_email', 'admin@termpatrol.com') }}" 
             readonly 
             class="w-full text-sm px-3.5 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 font-mono cursor-not-allowed">
         </div>

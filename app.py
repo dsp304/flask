@@ -28,7 +28,7 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = logging.getLogger("contract_watchdog")
+logger = logging.getLogger("termpatrol")
 
 # Local application imports
 from db import (
@@ -73,7 +73,7 @@ from extractor import extract_contract_from_text, ContractExtractionResult
 from verticals import VERTICAL_CONFIGS
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("TOKEN_ENCRYPTION_KEY") or "watchdog_secret_2026"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("TOKEN_ENCRYPTION_KEY") or "termpatrol_secret_2026"
 
 
 @app.context_processor
@@ -142,7 +142,7 @@ def render_dashboard_view(workspace_id: str, is_demo: bool = False, user_workspa
     workspace_emails = get_workspace_emails(workspace_id) if not is_demo else []
 
     # Use the primary email that the user used to login for setting up the calendar reminder
-    primary_login_email = session.get("user_email") or (workspace_emails[0] if workspace_emails else "demo@contractwatchdog.com")
+    primary_login_email = session.get("user_email") or (workspace_emails[0] if workspace_emails else "demo@termpatrol.com")
 
     # Once the contract is in the critical stage, automatically setup a reminder in the calendar
     try:
@@ -225,7 +225,7 @@ def generate_synthetic_contract_pdf(contract: dict, filename: str) -> bytes:
 
         # Header bar
         page.draw_rect(fitz.Rect(0, 0, 612, 54), fill=NAVY)
-        page.insert_text(fitz.Point(36, 34), "CONTRACT RENEWAL WATCHDOG  |  OFFICIAL AGREEMENT RECORD", fontsize=10, color=(1, 1, 1))
+        page.insert_text(fitz.Point(36, 34), "TERMPATROL  |  OFFICIAL AGREEMENT RECORD", fontsize=10, color=(1, 1, 1))
 
         # Title & Vendor
         vendor = contract.get("vendor_name") or "Vendor Agreement"
@@ -315,13 +315,13 @@ def generate_synthetic_contract_pdf(contract: dict, filename: str) -> bytes:
         y += 8
         page.draw_line(fitz.Point(36, y), fitz.Point(576, y), color=BORDER_COLOR)
         y += 16
-        raw_body = contract.get("raw_content") or f"Contract agreement record for {vendor} filed in Contract Renewal Watchdog."
+        raw_body = contract.get("raw_content") or f"Contract agreement record for {vendor} filed in TermPatrol."
         body_rect = fitz.Rect(36, y, 576, 730)
         page.insert_textbox(body_rect, raw_body[:800], fontsize=8.5, color=DARK)
 
         # Footer
         page.draw_line(fitz.Point(36, 745), fitz.Point(576, 745), color=BORDER_COLOR)
-        page.insert_text(fitz.Point(36, 760), "Contract Renewal Watchdog  •  Confidential & Proprietary", fontsize=8, color=SLATE)
+        page.insert_text(fitz.Point(36, 760), "TermPatrol  •  termpatrol.com  •  Confidential & Proprietary", fontsize=8, color=SLATE)
         page.insert_text(fitz.Point(460, 760), datetime.now().strftime("%B %d, %Y"), fontsize=8, color=SLATE)
 
         pdf_bytes = doc.tobytes()
@@ -871,7 +871,7 @@ def approve_contract(contract_id: int):
 
     # If approved contract is in critical stage, automatically schedule calendar reminder
     try:
-        primary_login_email = user_email or session.get("user_email") or "admin@contractwatchdog.com"
+        primary_login_email = user_email or session.get("user_email") or "admin@termpatrol.com"
         auto_setup_critical_contract_calendar_reminders(contract["workspace_id"], primary_login_email=primary_login_email)
     except Exception as cal_ex:
         logger.warning(f"Calendar reminder setup after contract approval: {cal_ex}")
@@ -883,7 +883,7 @@ def approve_contract(contract_id: int):
             "message": f"Contract for {vendor} approved and set to active.",
         }), 200
 
-    flash(f"Contract for '{vendor}' has been approved and activated in watchdog alerts.", "success")
+    flash(f"Contract for '{vendor}' has been approved and activated in TermPatrol alerts.", "success")
     return redirect(url_for("dashboard", workspace_id=contract["workspace_id"]))
 
 
@@ -1252,7 +1252,7 @@ def download_contract_calendar_ics(contract_id: int):
     if not contract:
         abort(404)
 
-    target_email = session.get("user_email") or contract.get("calendar_reminder_target_email") or "reminders@contractwatchdog.com"
+    target_email = session.get("user_email") or contract.get("calendar_reminder_target_email") or "alerts@termpatrol.com"
     ics_body = generate_calendar_ics(contract, target_email=target_email)
 
     clean_vendor = re.sub(r"[^\w\-_]", "_", contract.get("vendor_name") or "Contract")
@@ -1276,7 +1276,7 @@ def setup_contract_calendar_reminder_action(contract_id: int):
         abort(404)
 
     ws_id = contract.get("workspace_id")
-    target_email = user_email or (get_workspace_emails(ws_id)[0] if get_workspace_emails(ws_id) else "admin@contractwatchdog.com")
+    target_email = user_email or (get_workspace_emails(ws_id)[0] if get_workspace_emails(ws_id) else "admin@termpatrol.com")
 
     res = setup_calendar_reminder_for_contract(contract_id, target_email=target_email, workspace_id=ws_id)
     if res.get("success"):
@@ -1295,7 +1295,7 @@ def health_check():
     """Health check endpoint for deployment monitoring."""
     return jsonify({
         "status": "healthy",
-        "service": "contract-renewal-watchdog",
+        "service": "termpatrol",
         "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
         "mysql_configured": bool(os.environ.get("MYSQLHOST") or os.environ.get("MYSQL_URL")),
     }), 200
@@ -1323,9 +1323,19 @@ def inbound_email_webhook():
     if not payload:
         return jsonify({"error": "Invalid or missing JSON payload"}), 400
 
-    # 1. Resolve workspace_id (Postmark MailboxHash is standard for routing)
+    # Extract plus-addressing tag from To / OriginalRecipient (e.g., contracts+ws_id@termpatrol.com)
+    plus_ws_id = None
+    for rcpt_field in ("OriginalRecipient", "To"):
+        rcpt_val = payload.get(rcpt_field) or ""
+        plus_match = re.search(r"\+([a-zA-Z0-9_\-]+)@", str(rcpt_val))
+        if plus_match:
+            plus_ws_id = plus_match.group(1)
+            break
+
+    # 1. Resolve workspace_id (Postmark MailboxHash, plus-addressing, headers, or query parameters)
     workspace_id = (
         payload.get("MailboxHash")
+        or plus_ws_id
         or request.args.get("workspace_id")
         or request.headers.get("X-Workspace-Id")
         or payload.get("workspace_id")

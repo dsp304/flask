@@ -1,5 +1,5 @@
 """
-Contract Renewal Watchdog - Ingestion Worker (worker.py)
+TermPatrol - Ingestion Worker (worker.py)
 Task 6: Asynchronous Ingestion Queue & Historical Connectors.
 
 Connectors:
@@ -33,7 +33,7 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = logging.getLogger("contract_watchdog.worker")
+logger = logging.getLogger("termpatrol.worker")
 
 # Local application imports
 from db import (
@@ -644,7 +644,7 @@ def run_ingestion_queue_worker(batch_size: int = 10) -> Dict[str, Any]:
 # =============================================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="Contract Renewal Watchdog - Ingestion Worker & Connector Runner"
+        description="TermPatrol - Ingestion Worker & Connector Runner"
     )
     parser.add_argument("--run-queue", action="store_true", help="Process pending jobs from ingestion_jobs queue")
     parser.add_argument("--test-connection", action="store_true", help="Test connection and verify authenticated email account")

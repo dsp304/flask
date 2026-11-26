@@ -1,5 +1,5 @@
 """
-Contract Renewal Watchdog - Calendar Reminder Service (calendar_service.py)
+TermPatrol - Calendar Reminder Service (calendar_service.py)
 Automated calendar reminder creation, Google / Microsoft Calendar syncing,
 and RFC 5545 iCalendar (.ics) generation for contracts in critical stages.
 """
@@ -10,7 +10,7 @@ import urllib.parse
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any, List
 
-logger = logging.getLogger("contract_watchdog.calendar")
+logger = logging.getLogger("termpatrol.calendar")
 
 
 def is_contract_in_critical_stage(contract: Dict[str, Any]) -> bool:
@@ -87,7 +87,7 @@ def generate_calendar_ics(contract: Dict[str, Any], target_email: str) -> str:
         flags_text = str(flags)
 
     now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    clean_target_email = (target_email or "reminders@contractwatchdog.com").strip().lower()
+    clean_target_email = (target_email or "alerts@termpatrol.com").strip().lower()
 
     description_lines = [
         f"CRITICAL CONTRACT CANCELLATION DEADLINE",
@@ -102,23 +102,23 @@ def generate_calendar_ics(contract: Dict[str, Any], target_email: str) -> str:
         f"{how_change}",
         f"",
         f"Primary Contact / Recipient: {clean_target_email}",
-        f"Automated notification by Contract Renewal Watchdog",
+        f"Automated notification by TermPatrol (termpatrol.com)",
     ]
     description = "\\n".join(description_lines).replace("\r", "")
 
     ics_content = f"""BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Contract Renewal Watchdog//Calendar Reminder Service//EN
+PRODID:-//TermPatrol//Calendar Reminder Service//EN
 CALSCALE:GREGORIAN
 METHOD:REQUEST
 BEGIN:VEVENT
-UID:contract-reminder-{contract_id}-{deadline_str}@contractwatchdog.com
+UID:termpatrol-reminder-{contract_id}-{deadline_str}@termpatrol.com
 DTSTAMP:{now_utc}
 DTSTART;VALUE=DATE:{deadline_str}
 DTEND;VALUE=DATE:{next_day}
 SUMMARY:🚨 Contract Cancellation Cutoff: {vendor_name} ({contract_title})
 DESCRIPTION:{description}
-ORGANIZER;CN=Contract Watchdog:mailto:reminders@contractwatchdog.com
+ORGANIZER;CN=TermPatrol:mailto:alerts@termpatrol.com
 ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN={clean_target_email}:mailto:{clean_target_email}
 STATUS:CONFIRMED
 TRANSP:OPAQUE
@@ -183,7 +183,7 @@ def generate_web_calendar_links(contract: Dict[str, Any], target_email: str) -> 
         f"Annual Spend: {spend_text}\n\n"
         f"HOW TO CANCEL OR AMEND:\n{how_change}\n\n"
         f"Primary User Email: {target_email}\n"
-        f"Monitored by Contract Renewal Watchdog"
+        f"Monitored by TermPatrol (termpatrol.com)"
     )
 
     google_url = (
@@ -234,7 +234,7 @@ def setup_calendar_reminder_for_contract(
 
     clean_email = (target_email or "").strip().lower()
     if not clean_email or "@" not in clean_email:
-        clean_email = contract.get("sender_email") or "primary@contractwatchdog.com"
+        clean_email = contract.get("sender_email") or "alerts@termpatrol.com"
 
     ws_id = workspace_id or contract.get("workspace_id")
     api_sync_status = "simulated"
@@ -366,7 +366,7 @@ def auto_setup_critical_contract_calendar_reminders(
     primary_login_email: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Automated watchdog scanner for critical stage contracts:
+    Automated TermPatrol scanner for critical stage contracts:
     Iterates through active contracts in the workspace.
     For each contract in the critical stage (days_left <= 45 or urgency critical/overdue),
     automatically sets up the calendar reminder for the primary login email
@@ -379,7 +379,7 @@ def auto_setup_critical_contract_calendar_reminders(
 
     clean_email = (primary_login_email or "").strip().lower()
     if not clean_email or "@" not in clean_email or clean_email.startswith("demo@"):
-        clean_email = primary_login_email or "admin@contractwatchdog.com"
+        clean_email = primary_login_email or "admin@termpatrol.com"
 
     try:
         active_contracts, _ = get_dashboard_contracts(workspace_id)
@@ -404,7 +404,7 @@ def auto_setup_critical_contract_calendar_reminders(
         needs_setup = False
         if not already_set or not has_set_at:
             needs_setup = True
-        elif clean_email and "@" in clean_email and not clean_email.startswith("demo@") and current_target in ("demo@contractwatchdog.com", "user@workspace.com", ""):
+        elif clean_email and "@" in clean_email and not clean_email.startswith("demo@") and current_target in ("demo@termpatrol.com", "demo@contractwatchdog.com", "admin@contractwatchdog.com", "user@workspace.com", ""):
             # Sync target email to the newly logged-in user!
             needs_setup = True
 

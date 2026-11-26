@@ -287,8 +287,8 @@ def init_db():
     seed_workspace_members_sql = """
     INSERT IGNORE INTO workspace_members (workspace_id, email, role)
     VALUES 
-        ('ws_default', 'demo@contractwatchdog.com', 'owner'),
-        ('ws_default', 'admin@contractwatchdog.com', 'owner');
+        ('ws_default', 'demo@termpatrol.com', 'owner'),
+        ('ws_default', 'admin@termpatrol.com', 'owner');
     """
 
     try:
@@ -342,6 +342,16 @@ def init_db():
         with engine.begin() as conn:
             conn.execute(text(seed_default_workspace_sql))
             conn.execute(text(seed_workspace_members_sql))
+            conn.execute(text("""
+                UPDATE contract_history
+                SET event_summary = REPLACE(event_summary, 'Contract Watchdog', 'TermPatrol')
+                WHERE event_summary LIKE '%Contract Watchdog%'
+            """))
+            conn.execute(text("""
+                UPDATE contracts
+                SET calendar_reminder_target_email = 'admin@termpatrol.com'
+                WHERE calendar_reminder_target_email IN ('admin@contractwatchdog.com', 'demo@contractwatchdog.com')
+            """))
 
         # 4. Clean up any duplicate contracts in the database
         try:
@@ -689,7 +699,7 @@ def get_user_workspaces(email: str) -> List[Dict[str, Any]]:
             workspaces = [dict(r) for r in rows]
 
             # If user is admin/demo and ws_default isn't returned, ensure it is added
-            if clean_email in ("admin@contractwatchdog.com", "demo@contractwatchdog.com"):
+            if clean_email in ("admin@termpatrol.com", "demo@termpatrol.com", "admin@contractwatchdog.com", "demo@contractwatchdog.com"):
                 if not any(ws["id"] == "ws_default" for ws in workspaces):
                     default_ws = get_workspace("ws_default")
                     if default_ws:
@@ -713,7 +723,7 @@ def can_user_access_workspace(email: str, workspace_id: str) -> bool:
     clean_ws = workspace_id.strip().lower()
 
     # Built-in demo/admin access for default workspace
-    if clean_ws == "ws_default" and clean_email in ("admin@contractwatchdog.com", "demo@contractwatchdog.com"):
+    if clean_ws == "ws_default" and clean_email in ("admin@termpatrol.com", "demo@termpatrol.com", "admin@contractwatchdog.com", "demo@contractwatchdog.com"):
         return True
 
     query = text("""
@@ -1456,7 +1466,7 @@ def _hydrate_contract_record(record: Dict[str, Any]) -> Dict[str, Any]:
     # Web calendar and .ics URLs
     try:
         from calendar_service import generate_web_calendar_links
-        cal_links = generate_web_calendar_links(item, rem_target_email or "reminders@contractwatchdog.com")
+        cal_links = generate_web_calendar_links(item, rem_target_email or "alerts@termpatrol.com")
         item["google_calendar_url"] = cal_links.get("google")
         item["outlook_calendar_url"] = cal_links.get("outlook")
         item["ics_url"] = cal_links.get("ics")
@@ -2032,7 +2042,7 @@ def reset_database_data(preserve_demo_seed: bool = False) -> Dict[str, Any]:
 
         if preserve_demo_seed:
             conn.execute(text("INSERT IGNORE INTO workspaces (id, name, vertical_id) VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');"))
-            conn.execute(text("INSERT IGNORE INTO workspace_members (workspace_id, email, role) VALUES ('ws_default', 'demo@contractwatchdog.com', 'owner'), ('ws_default', 'admin@contractwatchdog.com', 'owner');"))
+            conn.execute(text("INSERT IGNORE INTO workspace_members (workspace_id, email, role) VALUES ('ws_default', 'demo@termpatrol.com', 'owner'), ('ws_default', 'admin@termpatrol.com', 'owner');"))
 
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
     logger.info(f"Database reset executed: {counts}")
@@ -2698,8 +2708,8 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
             emails_to_add.add(user_email.strip().lower())
 
         # Include standard test / admin emails only (do not pollute user accounts)
-        emails_to_add.add("admin@contractwatchdog.com")
-        emails_to_add.add("demo@contractwatchdog.com")
+        emails_to_add.add("admin@termpatrol.com")
+        emails_to_add.add("demo@termpatrol.com")
         emails_to_add.add("user@workspace.com")
         emails_to_add.add("user@enterprise.onmicrosoft.com")
 
@@ -2791,7 +2801,7 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                 deadline_val = c.get("calculated_cancellation_deadline")
                 days_left = (deadline_val - today).days if deadline_val else None
                 is_crit = bool(days_left is not None and days_left <= 45)
-                target_login_email = (user_email or "").strip().lower() or "admin@contractwatchdog.com"
+                target_login_email = (user_email or "").strip().lower() or "admin@termpatrol.com"
 
                 if is_crit:
                     cal_set = 1
@@ -2920,7 +2930,7 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                                     NULL, :exp_date,
                                     NULL, :canc_date,
                                     NULL, :spend, NULL, 'active',
-                                    'Initial agreement executed and ingested into Contract Watchdog.',
+                                    'Initial agreement executed and ingested into TermPatrol.',
                                     :subject, :sender, :rec_at
                                 )
                             """), {
@@ -3094,6 +3104,21 @@ def seed_sample_workspaces_and_contracts(user_email: Optional[str] = None) -> Di
                 "contracts_count": len(contracts_seeded),
                 "contracts": contracts_seeded,
             })
+
+        # Migrate legacy brand references in contract_history and contracts
+        try:
+            conn.execute(text("""
+                UPDATE contract_history
+                SET event_summary = REPLACE(event_summary, 'Contract Watchdog', 'TermPatrol')
+                WHERE event_summary LIKE '%Contract Watchdog%'
+            """))
+            conn.execute(text("""
+                UPDATE contracts
+                SET calendar_reminder_target_email = 'admin@termpatrol.com'
+                WHERE calendar_reminder_target_email IN ('admin@contractwatchdog.com', 'demo@contractwatchdog.com')
+            """))
+        except Exception as mig_ex:
+            logger.warning(f"Brand migration update notice: {mig_ex}")
 
     logger.info(f"Seeded {total_inserted} sample contracts across {len(workspaces_to_seed)} workspaces for emails: {emails_to_add}")
     return {

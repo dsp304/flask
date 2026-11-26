@@ -1,5 +1,5 @@
 -- =============================================================================
--- Contract Renewal Watchdog - MySQL Schema (utf8mb4)
+-- TermPatrol - MySQL Schema (utf8mb4)
 -- Task 7: Multi-Email Workspace Members & Scoped Ownership
 -- =============================================================================
 
@@ -130,7 +130,7 @@ VALUES ('ws_default', 'Default Business Workspace', 'general_b2b');
 
 -- Backfill initial demo/admin permissions for default workspace
 INSERT IGNORE INTO workspace_members (workspace_id, email, role)
-VALUES ('ws_default', 'demo@contractwatchdog.com', 'owner');
+VALUES ('ws_default', 'demo@termpatrol.com', 'owner');
 
 INSERT IGNORE INTO workspace_members (workspace_id, email, role)
-VALUES ('ws_default', 'admin@contractwatchdog.com', 'owner');
+VALUES ('ws_default', 'admin@termpatrol.com', 'owner');

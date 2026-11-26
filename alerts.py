@@ -1,5 +1,5 @@
 """
-Contract Renewal Watchdog - Alerts Dispatcher (alerts.py)
+TermPatrol - Alerts Dispatcher (alerts.py)
 Task 6: Scheduled / CLI runner for daily contract cancellation deadline alerts.
 
 Workflow:
@@ -27,7 +27,7 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = logging.getLogger("contract_watchdog.alerts")
+logger = logging.getLogger("termpatrol.alerts")
 
 # Local imports
 from db import (
@@ -77,7 +77,7 @@ def format_summary_alert(contract: Dict[str, Any], vertical_config: Dict[str, An
     quote = contract.get("source_evidence_quote") or "No quote extracted."
 
     return f"""================================================================================
-🚨 CONTRACT WATCHDOG ALERT: {urgency_label}
+🚨 TERMPATROL ALERT: {urgency_label}
 ================================================================================
 Workspace:       {contract.get('workspace_name', 'Default')} (ID: {contract.get('workspace_id')})
 Vertical:        {vertical_config.get('display_name', 'General Business')} (Lead Window: {vertical_config.get('default_alert_lead_days', 30)}d)
@@ -276,7 +276,7 @@ def run_alert_scan(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Contract Renewal Watchdog - Daily Cancellation Deadline Alert Runner"
+        description="TermPatrol - Daily Cancellation Deadline Alert Runner"
     )
     parser.add_argument("--workspace", type=str, default=None, help="Filter to specific workspace_id")
     parser.add_argument("--dry-run", action="store_true", help="Simulate alert scan without recording to alert_logs")
