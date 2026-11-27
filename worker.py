@@ -201,19 +201,54 @@ class MicrosoftGraphConnector:
         if self.access_token:
             try:
                 import urllib.parse
-                url = f"{query_params['endpoint']}?$filter={urllib.parse.quote(query_params['$filter'])}&$select={query_params['$select']}&$top={query_params['$top']}"
+                url = (
+                    f"{query_params['endpoint']}?"
+                    f"$filter={urllib.parse.quote(query_params['$filter'])}&"
+                    f"$select={query_params['$select']}&"
+                    f"$top=40&$orderby=receivedDateTime%20desc"
+                )
                 req = urllib.request.Request(
                     url,
                     headers={"Authorization": f"Bearer {self.access_token}"}
                 )
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     data = json.loads(resp.read().decode())
-                    messages = data.get("value", [])
-                    if messages:
-                        logger.info(f"Retrieved {len(messages)} live messages from Microsoft Graph.")
-                        return [self.normalize_graph_message(m) for m in messages]
+                    raw_messages = data.get("value", [])
+                    logger.info(f"Retrieved {len(raw_messages)} live messages from Microsoft Graph.")
+
+                    vertical = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
+                    kw_list = [k.lower() for k in vertical.get("search_keywords", [])] + [
+                        "contract", "agreement", "renewal", "auto-renew", "cancellation",
+                        "termination", "lease", "notice period", "non-renewal"
+                    ]
+
+                    matched = []
+                    for m in raw_messages:
+                        subj = (m.get("subject") or "").lower()
+                        body_txt = ((m.get("body") or {}).get("content") or "").lower()
+                        if any(kw in subj or kw in body_txt for kw in kw_list):
+                            # Fetch attachments if message hasAttachments is True
+                            if m.get("hasAttachments") and not m.get("attachments"):
+                                msg_id = m.get("id")
+                                try:
+                                    att_req = urllib.request.Request(
+                                        f"{query_params['endpoint']}/{msg_id}/attachments",
+                                        headers={"Authorization": f"Bearer {self.access_token}"}
+                                    )
+                                    with urllib.request.urlopen(att_req, timeout=10) as att_resp:
+                                        att_data = json.loads(att_resp.read().decode())
+                                        m["attachments"] = att_data.get("value", [])
+                                except Exception as att_err:
+                                    logger.warning(f"Failed fetching Graph attachments for {msg_id}: {att_err}")
+                            matched.append(self.normalize_graph_message(m))
+                            if len(matched) >= 10:
+                                break
+                    # Reverse so chronological order (oldest -> newest) handles renewals/cancellations naturally
+                    matched.reverse()
+                    return matched
             except Exception as e:
-                logger.warning(f"Live Microsoft Graph call encountered error ({e}); falling back to scaffolded test data.")
+                logger.warning(f"Live Microsoft Graph call encountered error ({e}).")
+                return []
 
         return self._generate_scaffolded_messages(vertical_id)
 
@@ -436,7 +471,9 @@ class GoogleWorkspaceConnector:
         if self.access_token:
             try:
                 import urllib.parse
-                url = f"{query_params['endpoint']}?q={urllib.parse.quote_plus(query_params['q'])}&maxResults=20"
+                # Include cancellation terms in Gmail search query
+                q_full = f"{query_params['q'][:-1]} OR cancellation OR \"non-renewal\" OR agreement)"
+                url = f"{query_params['endpoint']}?q={urllib.parse.quote_plus(q_full)}&maxResults=15"
                 req = urllib.request.Request(
                     url,
                     headers={"Authorization": f"Bearer {self.access_token}"}
@@ -444,21 +481,41 @@ class GoogleWorkspaceConnector:
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     data = json.loads(resp.read().decode())
                     msg_refs = data.get("messages", [])
-                    if msg_refs:
-                        logger.info(f"Found {len(msg_refs)} live message references matching 24-month query.")
-                        messages = []
-                        for ref in msg_refs[:10]:
-                            msg_id = ref.get("id")
-                            detail_req = urllib.request.Request(
-                                f"{query_params['endpoint']}/{msg_id}?format=full",
-                                headers={"Authorization": f"Bearer {self.access_token}"}
-                            )
-                            with urllib.request.urlopen(detail_req, timeout=10) as detail_resp:
-                                full_msg = json.loads(detail_resp.read().decode())
-                                messages.append(self.normalize_gmail_message(full_msg))
-                        return messages
+                    logger.info(f"Found {len(msg_refs)} live Gmail message references matching 24-month query.")
+                    messages = []
+                    for ref in msg_refs[:10]:
+                        msg_id = ref.get("id")
+                        detail_req = urllib.request.Request(
+                            f"{query_params['endpoint']}/{msg_id}?format=full",
+                            headers={"Authorization": f"Bearer {self.access_token}"}
+                        )
+                        with urllib.request.urlopen(detail_req, timeout=10) as detail_resp:
+                            full_msg = json.loads(detail_resp.read().decode())
+                            norm_msg = self.normalize_gmail_message(full_msg)
+                            # Hydrate any PDF/DOCX attachments referenced by AttachmentId
+                            for att in norm_msg.get("Attachments", []):
+                                att_id = att.get("AttachmentId")
+                                if att_id and not att.get("Content"):
+                                    try:
+                                        att_req = urllib.request.Request(
+                                            f"{query_params['endpoint']}/{msg_id}/attachments/{att_id}",
+                                            headers={"Authorization": f"Bearer {self.access_token}"}
+                                        )
+                                        with urllib.request.urlopen(att_req, timeout=10) as att_resp:
+                                            att_json = json.loads(att_resp.read().decode())
+                                            b64url_data = att_json.get("data", "")
+                                            if b64url_data:
+                                                raw_bytes = base64.urlsafe_b64decode(b64url_data + "==")
+                                                att["Content"] = base64.b64encode(raw_bytes).decode("ascii")
+                                    except Exception as att_err:
+                                        logger.warning(f"Failed fetching Gmail attachment {att_id}: {att_err}")
+                            messages.append(norm_msg)
+                    # Process oldest to newest so renewals/cancellations apply in chronological order
+                    messages.reverse()
+                    return messages
             except Exception as e:
-                logger.warning(f"Live Gmail call encountered error ({e}); falling back to scaffolded test data.")
+                logger.warning(f"Live Gmail call encountered error ({e}).")
+                return []
 
         return self._generate_scaffolded_messages(vertical_id)
 
@@ -542,8 +599,15 @@ def ingest_normalized_message(workspace_id: str, normalized_payload: Dict[str, A
             "vendor_name": extraction.vendor_name,
         }
 
+    # 5.5 Skip non-contract promotional/newsletter emails during bulk mailbox scans
+    if not extraction.is_valid_contract_or_renewal and not extraction.is_cancellation_or_termination:
+        return {
+            "status": "ignored_non_contract",
+            "message": "Email evaluated and determined not to be a vendor contract or renewal notice.",
+        }
+
     # 6. Status determination: 'needs_review' if confidence_score < 0.85
-    if not extraction.is_valid_contract_or_renewal or (extraction.confidence_score is not None and extraction.confidence_score < 0.85):
+    if extraction.confidence_score is not None and extraction.confidence_score < 0.85:
         status = "needs_review"
     else:
         status = "active"
@@ -558,6 +622,8 @@ def ingest_normalized_message(workspace_id: str, normalized_payload: Dict[str, A
             raw_content=combined_text,
             sender_email=parsed["sender_email"],
             email_subject=parsed["subject"],
+            attachment_filename=parsed.get("primary_attachment_filename"),
+            how_to_change_summary=extraction.how_to_change_summary,
         )
         logger.info(f"Ingested contract #{record.get('id')} ({extraction.vendor_name}) into workspace {workspace_id}")
         return {
@@ -565,8 +631,13 @@ def ingest_normalized_message(workspace_id: str, normalized_payload: Dict[str, A
             "contract_id": record.get("id"),
             "vendor_name": extraction.vendor_name,
             "contract_title": extraction.contract_title,
+            "category": extraction.category,
+            "notice_period_days": extraction.notice_period_days,
             "calculated_cancellation_deadline": extraction.calculated_cancellation_deadline,
-            "status": status,
+            "annual_spend_estimate": extraction.annual_spend_estimate,
+            "attachment_filename": parsed.get("primary_attachment_filename"),
+            "how_to_change_summary": extraction.how_to_change_summary,
+            "contract_status": record.get("status") or status,
         }
     except Exception as e:
         if "uq_workspace_fingerprint" in str(e) or "Duplicate entry" in str(e):

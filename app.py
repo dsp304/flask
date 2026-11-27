@@ -21,6 +21,7 @@ from flask import (
     Response,
     make_response,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -73,6 +74,7 @@ from extractor import extract_contract_from_text, ContractExtractionResult
 from verticals import VERTICAL_CONFIGS
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("TOKEN_ENCRYPTION_KEY") or "termpatrol_secret_2026"
 
 
@@ -452,7 +454,7 @@ def auth_microsoft():
 
     if ms_client_id:
         redirect_uri = url_for("auth_callback", provider="microsoft", _external=True)
-        scope = "openid email profile Mail.Read Calendars.ReadWrite offline_access"
+        scope = "openid email profile User.Read Mail.Read Calendars.ReadWrite offline_access"
         auth_url = (
             f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?"
             f"client_id={ms_client_id}&"
@@ -589,6 +591,38 @@ def auth_callback(provider: str = "google"):
         email = request.args.get("email") or session.get("user_email") or f"{provider}_user@company.com"
     email = email.strip().lower()
     session["user_email"] = email
+
+    # Preserve encrypted live OAuth tokens in session so first-time users who proceed
+    # through /profile and /onboarding still attach their tokens on workspace creation
+    if access_token:
+        scopes_str = (
+            "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events"
+            if provider == "google"
+            else "Mail.Read Calendars.ReadWrite"
+        )
+        session["pending_oauth"] = {
+            "provider": provider,
+            "email": email,
+            "enc_access": encrypt_token(access_token),
+            "enc_refresh": encrypt_token(refresh_token) if refresh_token else None,
+            "expiry_iso": token_expiry.isoformat() if token_expiry else None,
+            "scopes": scopes_str,
+        }
+        for existing_ws in get_user_workspaces(email):
+            ws_id_existing = existing_ws.get("id")
+            if ws_id_existing and ws_id_existing not in ("ws_default", "ws_apex_property_management", "ws_nexus_it_solutions", "ws_metro_health_clinic"):
+                try:
+                    save_oauth_connection(
+                        workspace_id=ws_id_existing,
+                        provider=provider,
+                        email=email,
+                        access_token=access_token,
+                        refresh_token=refresh_token,
+                        token_expiry=token_expiry,
+                        scopes=scopes_str,
+                    )
+                except Exception as e_ws:
+                    logger.warning(f"Failed saving OAuth token to existing workspace {ws_id_existing}: {e_ws}")
 
     profile = get_user_profile(email)
     if not profile or not profile.get("full_name"):
@@ -1056,6 +1090,26 @@ def onboarding():
         default_notice_period_days=default_notice_period_days,
         member_emails=member_emails,
     )
+
+    # Attach live OAuth tokens from session to this newly created workspace
+    pending_oauth = session.get("pending_oauth")
+    if pending_oauth and pending_oauth.get("enc_access"):
+        try:
+            dec_access = decrypt_token(pending_oauth["enc_access"])
+            dec_refresh = decrypt_token(pending_oauth["enc_refresh"]) if pending_oauth.get("enc_refresh") else None
+            exp_dt = datetime.fromisoformat(pending_oauth["expiry_iso"]) if pending_oauth.get("expiry_iso") else None
+            if dec_access:
+                save_oauth_connection(
+                    workspace_id=raw_id,
+                    provider=pending_oauth.get("provider", "google"),
+                    email=pending_oauth.get("email") or user_email,
+                    access_token=dec_access,
+                    refresh_token=dec_refresh,
+                    token_expiry=exp_dt,
+                    scopes=pending_oauth.get("scopes"),
+                )
+        except Exception as po_err:
+            logger.warning(f"Could not attach pending OAuth token to new workspace {raw_id}: {po_err}")
 
     selected_vertical = VERTICAL_CONFIGS.get(vertical_id, VERTICAL_CONFIGS["general_b2b"])
     session["active_workspace_id"] = raw_id

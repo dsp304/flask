@@ -3176,7 +3176,119 @@ def perform_24_month_mailbox_scan(
     except Exception as e:
         logger.warning(f"Could not register scanned email in workspace_members: {e}")
 
-    # Build contract catalog for this vertical
+    # -------------------------------------------------------------------------
+    # LIVE OAUTH MAILBOX SCAN (Real Gmail / Hotmail / Microsoft 365 Inbox)
+    # -------------------------------------------------------------------------
+    is_sample_ws = workspace_id in ("ws_default", "ws_apex_property_management", "ws_nexus_it_solutions", "ws_metro_health_clinic")
+    google_conn = get_oauth_connection(workspace_id, "google") if not is_sample_ws else None
+    ms_conn = get_oauth_connection(workspace_id, "microsoft") if not is_sample_ws else None
+    live_conn = None
+    live_provider = None
+    if google_conn and google_conn.get("access_token"):
+        live_conn = google_conn
+        live_provider = "google"
+    elif ms_conn and ms_conn.get("access_token"):
+        live_conn = ms_conn
+        live_provider = "microsoft"
+
+    if live_conn:
+        try:
+            from worker import GoogleWorkspaceConnector, MicrosoftGraphConnector, ingest_normalized_message
+            from calendar_service import auto_setup_critical_contract_calendar_reminders
+
+            if live_provider == "google":
+                connector = GoogleWorkspaceConnector(workspace_id, access_token=live_conn["access_token"])
+            else:
+                connector = MicrosoftGraphConnector(workspace_id, access_token=live_conn["access_token"])
+
+            live_messages = connector.fetch_historical_messages(vertical_id)
+            live_inserted = []
+            duplicates_skipped = 0
+
+            for msg in live_messages:
+                res = ingest_normalized_message(workspace_id, msg)
+                if res.get("status") == "duplicate":
+                    duplicates_skipped += 1
+                elif res.get("status") == "success":
+                    dl_str = res.get("calculated_cancellation_deadline")
+                    days_left = None
+                    if dl_str:
+                        try:
+                            dl_dt = datetime.strptime(str(dl_str)[:10], "%Y-%m-%d").date()
+                            days_left = (dl_dt - today).days
+                        except Exception:
+                            days_left = None
+                    if days_left is not None and days_left <= 14:
+                        badge_class = "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
+                        badge_text = f"{days_left}d left · Critical"
+                    elif days_left is not None and days_left <= 45:
+                        badge_class = "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                        badge_text = f"{days_left}d left · Warning"
+                    else:
+                        badge_class = "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                        badge_text = f"{days_left}d left · Monitored" if days_left is not None else "Monitored"
+
+                    live_inserted.append({
+                        "id": res.get("contract_id"),
+                        "vendor_name": res.get("vendor_name"),
+                        "contract_title": res.get("contract_title"),
+                        "category": res.get("category") or "General",
+                        "notice_period_days": res.get("notice_period_days") or 30,
+                        "calculated_cancellation_deadline": str(dl_str)[:10] if dl_str else "N/A",
+                        "annual_spend_estimate": res.get("annual_spend_estimate") or 0.0,
+                        "attachment_filename": res.get("attachment_filename"),
+                        "badge_class": badge_class,
+                        "badge_text": badge_text,
+                        "how_to_change_summary": res.get("how_to_change_summary"),
+                    })
+
+            # Auto-schedule calendar reminders for any critical contracts discovered
+            try:
+                auto_setup_critical_contract_calendar_reminders(workspace_id, primary_login_email=clean_email)
+            except Exception as cal_err:
+                logger.warning(f"Live scan calendar reminder setup notice: {cal_err}")
+
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        INSERT INTO ingestion_jobs (workspace_id, job_type, status, messages_found, contracts_extracted, duplicates_skipped)
+                        VALUES (:ws_id, :jtype, 'completed', :msgs, :contracts, :dups)
+                    """), {
+                        "ws_id": workspace_id,
+                        "jtype": "google_workspace" if live_provider == "google" else "microsoft_graph",
+                        "msgs": len(live_messages),
+                        "contracts": len(live_inserted),
+                        "dups": duplicates_skipped,
+                    })
+            except Exception as j_err:
+                logger.warning(f"Could not record live ingestion job: {j_err}")
+
+            logger.info(
+                f"Live {live_provider} 24-month mailbox scan complete for {clean_email} in {workspace_id}: "
+                f"{len(live_messages)} candidate messages evaluated, {len(live_inserted)} contracts extracted."
+            )
+            return {
+                "status": "success",
+                "live_oauth": True,
+                "provider": live_provider,
+                "workspace_id": workspace_id,
+                "scanned_email": clean_email,
+                "is_new_email": is_new_email,
+                "time_window_months": 24,
+                "date_window": {
+                    "start": cutoff_date.strftime("%b %d, %Y"),
+                    "end": today.strftime("%b %d, %Y"),
+                    "days": 730,
+                },
+                "keywords_searched": keywords[:8],
+                "messages_scanned": len(live_messages),
+                "contracts_found": len(live_inserted),
+                "contracts": live_inserted,
+            }
+        except Exception as live_scan_err:
+            logger.exception(f"Live OAuth scan encountered error for {workspace_id}: {live_scan_err}")
+
+    # Build contract catalog for this vertical (Simulated / Demo Mode Fallback)
     contracts_to_ingest = []
 
     if is_new_email:
